@@ -15,7 +15,10 @@ class ScopeVisitor(ast.NodeVisitor):
 		return ".".join(self._scope_stack)
 
 	def _record(self, line: int, col: int, identifier: str, node_type: str) -> None:
-		self.entries[f"{line}:{col}"] = {"scope": self._scope, "identifier": identifier, "node_type": node_type}
+		entry = {"scope": self._scope, "identifier": identifier, "node_type": node_type}
+		if node_type not in ("Function", "Class", "Parameter"):
+			entry["goto"] = ""
+		self.entries[f"{line}:{col}"] = entry
 
 	def visit_Name(self, node: ast.Name) -> None:
 		self._record(node.lineno, node.col_offset, node.id, "Name")
@@ -92,10 +95,6 @@ def analyze_file(py_path: Path) -> dict:
 	return dict(sorted(visitor.entries.items(), key=lambda kv: tuple(int(x) for x in kv[0].split(":"))))
 
 
-def flat_path(rel: Path, output_dir: Path) -> Path:
-	return output_dir / (str(rel).replace("/", "-").replace("\\", "-") + ".json")
-
-
 def main() -> None:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("input_dir", type=Path)
@@ -108,28 +107,23 @@ def main() -> None:
 	if not input_dir.is_dir():
 		sys.exit(f"Error: '{input_dir}' is not a directory.")
 
-	output_dir.mkdir(parents=True, exist_ok=True)
 	py_files = sorted(input_dir.glob("**/*.py"))
-	if not py_files:
-		print(f"No .py files found in '{input_dir}'.")
-		return
+	if not py_files: return
+	output_dir.mkdir(parents=True, exist_ok=True)
 
-	ok = errors = 0
-	for py_path in py_files:
+	pad = len(str(len(py_files) - 1))
+	index: dict[str, str] = {}
+	for i, py_path in enumerate(py_files):
 		rel = py_path.relative_to(input_dir)
-		out_path = flat_path(rel, output_dir)
+		out_name = f"{i:0{pad}}.json"
+		out_path = output_dir / out_name
 		try:
 			out_path.write_text(json.dumps(analyze_file(py_path), indent="\t", ensure_ascii=False), encoding="utf-8")
-			print(f"  OK  {rel}  →  {out_path.relative_to(output_dir)}")
-			ok += 1
-		except SyntaxError as exc:
-			print(f"SKIP  {rel}  (syntax error: {exc})", file=sys.stderr)
-			errors += 1
-		except Exception as exc:
-			print(f"FAIL  {rel}  ({exc})", file=sys.stderr)
-			errors += 1
+			index[str(rel)] = out_name
+		except (SyntaxError, Exception):
+			pass
 
-	print(f"\nDone. {ok} file(s) processed, {errors} skipped.")
+	(output_dir / "index.json").write_text(json.dumps(index, indent="\t", ensure_ascii=False), encoding="utf-8")
 
 
 if __name__ == "__main__":
