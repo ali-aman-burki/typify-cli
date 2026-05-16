@@ -20,6 +20,7 @@ class ScopeVisitor(ast.NodeVisitor):
 			entry["goto"] = ""
 		if node_type == "Function":
 			entry["params"] = {p: "" for p in (params or [])}
+			entry["callsites"] = []
 		self.entries[f"{line}:{col}"] = entry
 
 	def visit_Name(self, node: ast.Name) -> None:
