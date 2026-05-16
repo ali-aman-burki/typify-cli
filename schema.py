@@ -14,10 +14,12 @@ class ScopeVisitor(ast.NodeVisitor):
 	def _scope(self) -> str:
 		return ".".join(self._scope_stack)
 
-	def _record(self, line: int, col: int, identifier: str, node_type: str) -> None:
-		entry = {"scope": self._scope, "identifier": identifier, "node_type": node_type}
+	def _record(self, line: int, col: int, identifier: str, node_type: str, params: list[str] | None = None) -> None:
+		entry = {"scope": self._scope, "identifier": identifier, "node_type": node_type, "type": ""}
 		if node_type not in ("Function", "Class", "Parameter"):
 			entry["goto"] = ""
+		if node_type == "Function":
+			entry["params"] = {p: "" for p in (params or [])}
 		self.entries[f"{line}:{col}"] = entry
 
 	def visit_Name(self, node: ast.Name) -> None:
@@ -74,7 +76,13 @@ class ScopeVisitor(ast.NodeVisitor):
 		self.generic_visit(node)
 
 	def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-		self._record(node.lineno, node.col_offset + 4, node.name, "Function")
+		all_args = node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+		if node.args.vararg:
+			all_args.append(node.args.vararg)
+		if node.args.kwarg:
+			all_args.append(node.args.kwarg)
+		params = [a.arg for a in all_args]
+		self._record(node.lineno, node.col_offset + 4, node.name, "Function", params=params)
 		self._scope_stack.append(f"F:{node.name}")
 		self.generic_visit(node)
 		self._scope_stack.pop()
