@@ -6,10 +6,6 @@ import random
 from pathlib import Path
 
 
-# ---------------------------------------------------------------------------
-# Mock data helpers
-# ---------------------------------------------------------------------------
-
 _PRIMITIVE_TYPES = [
     "int", "float", "str", "bool", "bytes", "None",
 ]
@@ -45,22 +41,17 @@ def _random_type() -> str:
 
 
 def _random_location(rel_paths: list[str]) -> str:
-    """Return a random 'filepath:line:col' using an actual file from the input dir."""
     path = random.choice(rel_paths)
     line = random.randint(1, 200)
     col = random.randint(0, 40)
     return f"{path}:{line}:{col}"
 
 
-# ---------------------------------------------------------------------------
-# AST visitor
-# ---------------------------------------------------------------------------
-
 class ScopeVisitor(ast.NodeVisitor):
     def __init__(self, rel_paths: list[str]):
         self.entries: dict[str, dict] = {}
         self._scope_stack: list[str] = []
-        self._rel_paths = rel_paths  # all .py paths relative to input_dir
+        self._rel_paths = rel_paths
 
     @property
     def _scope(self) -> str:
@@ -131,7 +122,7 @@ class ScopeVisitor(ast.NodeVisitor):
             col = 5
             for part in parts:
                 self._record(node.lineno, col, part, "Name")
-                col += len(part) + 1  # +1 for the "."
+                col += len(part) + 1
 
         for alias in node.names:
             name = alias.asname if alias.asname else alias.name
@@ -159,10 +150,6 @@ class ScopeVisitor(ast.NodeVisitor):
         self._scope_stack.pop()
 
 
-# ---------------------------------------------------------------------------
-# Analysis
-# ---------------------------------------------------------------------------
-
 def analyze_file(py_path: Path, rel_paths: list[str]) -> dict:
     tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
     visitor = ScopeVisitor(rel_paths)
@@ -189,7 +176,6 @@ def main() -> None:
         return
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build the list of relative path strings once — used for mock locations
     rel_paths = [str(p.relative_to(input_dir)) for p in py_files]
 
     pad = len(str(len(py_files) - 1))
