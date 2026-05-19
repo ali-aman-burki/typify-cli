@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "typify"
+version = "0.1.0"
+description = "Python source code type annotation tool"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Ali Aman", email = "ali.burki1@hotmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+typify = "typify.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
