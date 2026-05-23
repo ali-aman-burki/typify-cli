@@ -21,6 +21,7 @@ def _file_json(fr) -> dict:
             "name": qname,
             "type": str(sym.inferred_type),
             "line": sym.defined_at[1] if sym.defined_at else None,
+            "col": sym.defined_at[2] if sym.defined_at else None,
         })
     return {
         "filepath": fr.filepath,
