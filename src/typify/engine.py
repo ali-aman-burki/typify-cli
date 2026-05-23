@@ -192,7 +192,7 @@ class TypeInferenceVisitor(ast.NodeVisitor):
     # ------------------------------------------------------------------
 
     def _loc(self, node: ast.AST):
-        return (self.filename, getattr(node, "lineno", None), getattr(node, "col_offset", None))
+        return (self.filename, getattr(node, "lineno", None))
 
     def _define(self, name: str, t: InferredType, node: ast.AST) -> Symbol:
         sym = self.scopes.define(name, t, self._loc(node))
@@ -579,9 +579,9 @@ class TypeInferenceVisitor(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             name = alias.asname if alias.asname else alias.name.split(".")[0]
-            self._define(name, ANY, alias)
+            self._define(name, ANY, node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         for alias in node.names:
             name = alias.asname if alias.asname else alias.name
-            self._define(name, ANY, alias)
+            self._define(name, ANY, node)
