@@ -163,7 +163,6 @@ class JsonReporter:
                         "name": qname,
                         "type": str(sym.inferred_type),
                         "line": sym.defined_at[1] if sym.defined_at else None,
-                        "col": sym.defined_at[2] if sym.defined_at else None,
                     })
                 file_data["bindings"] = bindings
                 file_data["function_returns"] = {

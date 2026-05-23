@@ -20,7 +20,7 @@ class ScopeKind(Enum):
 class Symbol:
     name: str
     inferred_type: InferredType = field(default_factory=lambda: UNKNOWN)
-    # Where defined (filename, lineno, col_offset)
+    # Where defined (filename, lineno)
     defined_at: Optional[tuple] = None
     # Assignments seen (for tracking multiple writes)
     assignment_types: List[InferredType] = field(default_factory=list)
