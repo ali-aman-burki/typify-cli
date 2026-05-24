@@ -116,12 +116,18 @@ A function (or async function) definition. Has `params` and `callsites` instead 
   },
   "callsites": {
     "core/main.py:42:8": {
-      "text":  "bytes",
-      "limit": "int"
+      "params": {
+        "text":  "bytes",
+        "limit": "int"
+      },
+      "type": "dict[int, float]"
     },
     "tests/test_parse.py:17:4": {
-      "text":  "str",
-      "limit": "None"
+      "params": {
+        "text":  "str",
+        "limit": "None"
+      },
+      "type": "dict[str, Any]"
     }
   }
 }
@@ -129,7 +135,7 @@ A function (or async function) definition. Has `params` and `callsites` instead 
 
 `params` represents the declared (definition-site) types of each parameter.
 
-`callsites` is keyed by location strings (`"relpath:line:col"`) and each value is a mapping of parameter names to the types that were passed at that specific call site. Different call sites may supply different types for the same parameter, which is the primary signal this schema is designed to capture.
+`callsites` is keyed by location strings (`"relpath:line:col"`). Each value has a `params` mapping (parameter names to the types passed at that call site) and a `type` field (the return type observed at that call site). Different call sites may supply different types for the same parameter or observe different return types, which is the primary signal this schema is designed to capture.
 
 ---
 
