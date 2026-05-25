@@ -1,0 +1,38 @@
+from __future__ import annotations
+from dataclasses import dataclass, field
+from .type_expr import TypeExpr, UNKNOWN
+
+
+@dataclass
+class Scope:
+    parent: Scope | None = None
+    _env: dict[str, TypeExpr] = field(default_factory=dict)
+
+    def set(self, name: str, t: TypeExpr) -> None:
+        self._env[name] = t
+
+    def get(self, name: str) -> TypeExpr:
+        if name in self._env:
+            return self._env[name]
+        if self.parent is not None:
+            return self.parent.get(name)
+        return UNKNOWN
+
+
+@dataclass
+class ClassInfo:
+    name: str
+    fields: dict[str, TypeExpr] = field(default_factory=dict)
+
+
+@dataclass
+class FuncInfo:
+    name: str
+    params: list[str] = field(default_factory=list)
+    return_type: TypeExpr = field(default_factory=lambda: UNKNOWN)
+
+
+@dataclass
+class Registry:
+    classes: dict[str, ClassInfo] = field(default_factory=dict)
+    functions: dict[str, FuncInfo] = field(default_factory=dict)
