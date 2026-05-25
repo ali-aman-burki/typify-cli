@@ -12,7 +12,10 @@ authors = [
     { name = "Ali Aman", email = "ali.burki1@hotmail.com" }
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "tantivy",
+    "rich",
+]
 
 [project.scripts]
 typify-prototype = "typify_prototype.__main__:main"

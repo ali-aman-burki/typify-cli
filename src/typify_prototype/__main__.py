@@ -7,7 +7,7 @@ from .pipeline import collect_entries
 from .usage.symbol_table import Registry
 from .usage.collector import collect
 from .usage.infer import infer_file
-
+from .retrieval.build import build_index
 
 def _cmd_infer(args: argparse.Namespace) -> None:
     input_dir = args.input_dir.resolve()
@@ -58,6 +58,14 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_build(args: argparse.Namespace) -> None:
+    build_index(
+        dataset_root=args.dataset_root.resolve(),
+        index_dir=args.index.resolve(),
+        workers=args.workers,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -66,9 +74,16 @@ def main() -> None:
     infer_parser.add_argument("input_dir", type=Path)
     infer_parser.add_argument("output_dir", type=Path)
 
+    build_parser = subparsers.add_parser("build", help="Build Tantivy index from a dataset")
+    build_parser.add_argument("dataset_root", type=Path)
+    build_parser.add_argument("index", type=Path)
+    build_parser.add_argument("--workers", type=int, default=4)
+
     args = parser.parse_args()
     if args.command == "infer":
         _cmd_infer(args)
+    elif args.command == "build":
+        _cmd_build(args)
 
 
 if __name__ == "__main__":
