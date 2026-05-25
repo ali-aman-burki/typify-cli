@@ -48,8 +48,6 @@ def _cmd_infer(args: argparse.Namespace) -> None:
         out_name = f"{i:0{pad}}.json"
         out_path = output_dir / out_name
         entries = all_entries[relpath]
-        if not entries:
-            continue
         out_path.write_text(
             json.dumps(entries, indent="\t", ensure_ascii=False), encoding="utf-8"
         )
