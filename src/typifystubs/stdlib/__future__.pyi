@@ -1,3 +1,0 @@
-class _Feature:...
-
-annotations = _Feature()
