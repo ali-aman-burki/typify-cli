@@ -175,9 +175,11 @@ class _InferVisitor(ast.NodeVisitor):
                 cls = self._current_class()
                 if cls:
                     self._scope.set("self", TypeExpr(cls))
+                    self._scope.set_last("self", TypeExpr(cls))
                 continue
             t = from_annotation(arg.annotation) or UNKNOWN
             self._scope.set(arg.arg, t)
+            self._scope.set_last(arg.arg, t)
             self._set_type(self._key(arg.lineno, arg.col_offset), t)
 
         for deco in node.decorator_list:
@@ -241,7 +243,9 @@ class _InferVisitor(ast.NodeVisitor):
 
     def _assign_target(self, target: ast.expr, t: TypeExpr) -> None:
         if isinstance(target, ast.Name):
-            self._scope.set(target.id, t)
+            prev = self._scope.get(target.id)
+            self._scope.set(target.id, union(prev, t))
+            self._scope.set_last(target.id, t)
             self._set_type(self._key(target.lineno, target.col_offset), t)
         elif isinstance(target, ast.Attribute):
             if (
@@ -295,7 +299,7 @@ class _InferVisitor(ast.NodeVisitor):
         if isinstance(node, ast.Constant):
             return _literal_type(node)
         if isinstance(node, ast.Name):
-            return self._scope.get(node.id)
+            return self._scope.get_last(node.id)
         if isinstance(node, ast.List):
             elem_t = _union_all(self._infer_expr(e) for e in node.elts)
             return TypeExpr("list", (elem_t,)) if elem_t != UNKNOWN else TypeExpr("list")

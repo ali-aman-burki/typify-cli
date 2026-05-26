@@ -7,15 +7,26 @@ from .type_expr import TypeExpr, UNKNOWN
 class Scope:
     parent: Scope | None = None
     _env: dict[str, TypeExpr] = field(default_factory=dict)
+    _last: dict[str, TypeExpr] = field(default_factory=dict)
 
     def set(self, name: str, t: TypeExpr) -> None:
         self._env[name] = t
+
+    def set_last(self, name: str, t: TypeExpr) -> None:
+        self._last[name] = t
 
     def get(self, name: str) -> TypeExpr:
         if name in self._env:
             return self._env[name]
         if self.parent is not None:
             return self.parent.get(name)
+        return UNKNOWN
+
+    def get_last(self, name: str) -> TypeExpr:
+        if name in self._last:
+            return self._last[name]
+        if self.parent is not None:
+            return self.parent.get_last(name)
         return UNKNOWN
 
 

@@ -56,7 +56,7 @@ Additional fields appear depending on `node_type`:
 | Field | Type | Description |
 |---|---|---|
 | `usage` | `string` | Type inferred from usage/context analysis. Empty string if not resolved. |
-| `retrieved` | `array` | Type candidates surfaced by the retrieval system. Empty list until retrieval runs. |
+| `retrieved` | `object` | Type candidates surfaced by the retrieval system, keyed by type name. Each value is `{"score": float, "hits": int}`. Empty object `{}` until retrieval runs. Candidates are ordered by descending score (insertion order). |
 
 ---
 
@@ -70,8 +70,15 @@ A bare name expression or attribute access — a symbol being read or written.
   "scope":       "F:main",
   "identifier":  "result",
   "node_type":   "Name",
-  "type":        { "usage": "Optional[int]", "retrieved": [] },
-  "goto":        "utils/helpers.py:38:0"
+  "type": {
+    "usage": "Optional[int]",
+    "retrieved": {
+      "int":           { "score": 14.2, "hits": 4 },
+      "Optional[int]": { "score": 9.1,  "hits": 2 },
+      "str":           { "score": 3.0,  "hits": 1 }
+    }
+  },
+  "goto": "utils/helpers.py:38:0"
 }
 ```
 
@@ -85,7 +92,7 @@ A function being invoked at this position.
   "scope":       "F:main",
   "identifier":  "process",
   "node_type":   "Call",
-  "type":        { "usage": "list[str]", "retrieved": [] },
+  "type":        { "usage": "list[str]", "retrieved": {} },
   "goto":        "core/ops.py:12:4"
 }
 ```
@@ -100,7 +107,7 @@ A formal parameter in a function signature.
   "scope":       "F:parse",
   "identifier":  "text",
   "node_type":   "Parameter",
-  "type":        { "usage": "str", "retrieved": [] }
+  "type":        { "usage": "str", "retrieved": {} }
 }
 ```
 
@@ -116,25 +123,25 @@ A function (or async function) definition. Has `params` and `callsites` instead 
   "scope":       "",
   "identifier":  "parse",
   "node_type":   "Function",
-  "type":        { "usage": "dict[str, Any]", "retrieved": [] },
+  "type":        { "usage": "dict[str, Any]", "retrieved": {} },
   "params": {
-    "text":  { "usage": "str", "retrieved": [] },
-    "limit": { "usage": "Optional[int]", "retrieved": [] }
+    "text":  { "usage": "str", "retrieved": {} },
+    "limit": { "usage": "Optional[int]", "retrieved": {} }
   },
   "callsites": {
     "core/main.py:42:8": {
       "params": {
-        "text":  { "usage": "bytes", "retrieved": [] },
-        "limit": { "usage": "int", "retrieved": [] }
+        "text":  { "usage": "bytes", "retrieved": {} },
+        "limit": { "usage": "int", "retrieved": {} }
       },
-      "type": { "usage": "dict[int, float]", "retrieved": [] }
+      "type": { "usage": "dict[int, float]", "retrieved": {} }
     },
     "tests/test_parse.py:17:4": {
       "params": {
-        "text":  { "usage": "str", "retrieved": [] },
-        "limit": { "usage": "None", "retrieved": [] }
+        "text":  { "usage": "str", "retrieved": {} },
+        "limit": { "usage": "None", "retrieved": {} }
       },
-      "type": { "usage": "dict[str, Any]", "retrieved": [] }
+      "type": { "usage": "dict[str, Any]", "retrieved": {} }
     }
   }
 }
