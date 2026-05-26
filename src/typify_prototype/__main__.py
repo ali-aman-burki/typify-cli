@@ -9,6 +9,24 @@ from .usage.collector import collect
 from .usage.infer import infer_file
 from .retrieval.build import build_index
 
+_DEFAULT_CONFIG = {
+    "context-retrieval": True,
+    "augment-context": False,
+    "deep-learn": False,
+}
+
+
+def _load_config(output_dir: Path) -> dict:
+    config_path = output_dir / "config.json"
+    if config_path.exists():
+        with config_path.open(encoding="utf-8") as f:
+            return json.load(f)
+    config_path.write_text(
+        json.dumps(_DEFAULT_CONFIG, indent="\t", ensure_ascii=False), encoding="utf-8"
+    )
+    return dict(_DEFAULT_CONFIG)
+
+
 def _cmd_infer(args: argparse.Namespace) -> None:
     input_dir = args.input_dir.resolve()
     output_dir = args.output_dir.resolve()
@@ -20,6 +38,8 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     if not py_files:
         return
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    _load_config(output_dir)
 
     pairs: list[tuple[Path, str]] = [
         (p, str(p.relative_to(input_dir))) for p in py_files
