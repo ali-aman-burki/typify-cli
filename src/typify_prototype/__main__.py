@@ -8,9 +8,12 @@ from .usage.symbol_table import Registry
 from .usage.collector import collect
 from .usage.infer import infer_file
 from .retrieval.build import build_index
+from .retrieval.query import TypeRetriever
+from .retrieval.retrieve_file import retrieve_file
 
 _DEFAULT_CONFIG = {
     "context-retrieval": True,
+    "retrieval-top-k": 5,
     "augment-context": False,
     "deep-learn": False,
 }
@@ -39,7 +42,8 @@ def _cmd_infer(args: argparse.Namespace) -> None:
         return
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    _load_config(output_dir)
+    config = _load_config(output_dir)
+    top_k: int = config.get("retrieval-top-k", 5)
 
     pairs: list[tuple[Path, str]] = [
         (p, str(p.relative_to(input_dir))) for p in py_files
@@ -72,12 +76,24 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     registry = Registry()
     collect([(p, r) for p, r in pairs], registry)
 
-    # Pass 3: infer types per file; update JSON immediately after each file
+    # Pass 3: usage-driven inference
     for py_path, relpath in pairs:
         infer_file(py_path, relpath, registry, all_entries[relpath])
         out_paths[relpath].write_text(
-            json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False), encoding="utf-8"
+            json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
+            encoding="utf-8",
         )
+
+    # Pass 4: retrieval-driven inference (skipped if index is absent or disabled)
+    index_dir = output_dir / "context-index"
+    if config.get("context-retrieval", True) and index_dir.is_dir():
+        retriever = TypeRetriever(index_dir)
+        for py_path, relpath in pairs:
+            retrieve_file(py_path, relpath, retriever, all_entries[relpath], top_k)
+            out_paths[relpath].write_text(
+                json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
+                encoding="utf-8",
+            )
 
 
 def _cmd_build(args: argparse.Namespace) -> None:
