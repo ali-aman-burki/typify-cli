@@ -124,7 +124,7 @@ class _InferVisitor(ast.NodeVisitor):
 
     def _set_type(self, key: str, t: TypeExpr) -> None:
         if t != UNKNOWN and key in self._entries:
-            self._entries[key]["type"] = str(t)
+            self._entries[key]["type"]["usage"] = str(t)
 
     def _current_class(self) -> str | None:
         return self._class_stack[-1] if self._class_stack else None
@@ -213,7 +213,7 @@ class _InferVisitor(ast.NodeVisitor):
                     continue
                 t = self._scope.get(arg.arg)
                 if t != UNKNOWN:
-                    entry["params"][arg.arg] = str(t)
+                    entry["params"][arg.arg]["usage"] = str(t)
 
         self._scope = outer
 

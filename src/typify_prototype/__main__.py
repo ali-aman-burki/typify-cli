@@ -44,30 +44,21 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     pairs: list[tuple[Path, str]] = [
         (p, str(p.relative_to(input_dir))) for p in py_files
     ]
-
-    # Pass 1: collect entries (schema skeleton)
-    all_entries: dict[str, dict[str, dict]] = {}
-    for py_path, relpath in pairs:
-        try:
-            all_entries[relpath] = collect_entries(py_path)
-        except (SyntaxError, Exception):
-            all_entries[relpath] = {}
-
-    # Pass 2: build project-wide registry (classes, functions, field types)
-    registry = Registry()
-    collect([(p, r) for p, r in pairs], registry)
-
-    # Pass 3: infer types into each file's entries
-    for py_path, relpath in pairs:
-        infer_file(py_path, relpath, registry, all_entries[relpath])
-
-    # Write output
     pad = len(str(len(py_files) - 1))
+
+    # Pass 1: collect skeleton entries and write initial JSONs immediately
+    all_entries: dict[str, dict[str, dict]] = {}
+    out_paths: dict[str, Path] = {}
     index: dict[str, str] = {}
-    for i, (_, relpath) in enumerate(pairs):
+    for i, (py_path, relpath) in enumerate(pairs):
+        try:
+            entries = collect_entries(py_path)
+        except (SyntaxError, Exception):
+            entries = {}
+        all_entries[relpath] = entries
         out_name = f"{i:0{pad}}.json"
         out_path = output_dir / out_name
-        entries = all_entries[relpath]
+        out_paths[relpath] = out_path
         out_path.write_text(
             json.dumps(entries, indent="\t", ensure_ascii=False), encoding="utf-8"
         )
@@ -76,6 +67,17 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     (output_dir / "index.json").write_text(
         json.dumps(index, indent="\t", ensure_ascii=False), encoding="utf-8"
     )
+
+    # Pass 2: build project-wide registry (classes, functions, field types)
+    registry = Registry()
+    collect([(p, r) for p, r in pairs], registry)
+
+    # Pass 3: infer types per file; update JSON immediately after each file
+    for py_path, relpath in pairs:
+        infer_file(py_path, relpath, registry, all_entries[relpath])
+        out_paths[relpath].write_text(
+            json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False), encoding="utf-8"
+        )
 
 
 def _cmd_build(args: argparse.Namespace) -> None:
