@@ -106,9 +106,24 @@ def infer_return_with_args(
     arg_types: dict[str, TypeExpr],
     registry: Registry,
     relpath: str,
+    depth: int = 0,
+    memo: dict | None = None,
+    computing: set | None = None,
+    ast_cache: dict[str, ast.Module] | None = None,
+    py_paths: dict[str, Path] | None = None,
 ) -> TypeExpr:
-    """Simulate a function body with specific argument types and return the inferred return type."""
+    """Simulate a function body with specific argument types and return the inferred return type.
+
+    When depth > 0, calls to project-defined functions inside the body are recursively
+    simulated rather than falling back to the pre-computed general return type.
+    memo, computing, ast_cache, and py_paths are shared across the entire simulation run.
+    """
     visitor = _InferVisitor(relpath, registry, {}, record_callsites=False)
+    visitor._sym_depth = depth
+    visitor._sym_memo = memo
+    visitor._sym_computing = computing
+    visitor._sym_ast_cache = ast_cache
+    visitor._sym_py_paths = py_paths
     for param, t in arg_types.items():
         visitor._scope.set(param, t)
         visitor._scope.set_last(param, t)
@@ -149,6 +164,12 @@ class _InferVisitor(ast.NodeVisitor):
         self._record_callsites = record_callsites
         self._scope = Scope()
         self._class_stack: list[str] = []
+        # Symbolic execution context — set by infer_return_with_args when depth > 0
+        self._sym_depth: int = 0
+        self._sym_memo: dict | None = None
+        self._sym_computing: set | None = None
+        self._sym_ast_cache: dict[str, ast.Module] | None = None
+        self._sym_py_paths: dict[str, Path] | None = None
         # Pre-seed scope with from-imported module-level variables so that
         # `from a import x; y = x` resolves x's type without an explicit annotation.
         imp_info = registry.imports.get(relpath)
@@ -305,6 +326,67 @@ class _InferVisitor(ast.NodeVisitor):
         return arg_types
 
     # ── scope-managing visitors ───────────────────────────────────────────
+
+    def _try_sym_call(self, fi: FuncInfo, node: ast.Call) -> TypeExpr:
+        """Recursively simulate fi with the args at this call site.
+
+        Returns UNKNOWN when symbolic execution is disabled, the depth budget is
+        exhausted, a cycle is detected, or the callee AST cannot be found.
+        Falls back gracefully in all of those cases so _infer_call can try fi.return_type.
+        """
+        if self._sym_depth <= 0 or self._sym_memo is None or self._sym_computing is None:
+            return UNKNOWN
+
+        arg_types = self._map_args_to_params(node, fi)
+        memo_key = (
+            fi.def_relpath,
+            fi.def_key,
+            frozenset((k, str(v)) for k, v in arg_types.items() if v != UNKNOWN),
+        )
+
+        if memo_key in self._sym_memo:
+            return self._sym_memo[memo_key]
+        if memo_key in self._sym_computing:
+            return UNKNOWN  # cycle — let caller fall back to fi.return_type
+
+        # Lazily parse the callee's source file and cache the module AST
+        if self._sym_ast_cache is None:
+            return UNKNOWN
+        if fi.def_relpath not in self._sym_ast_cache:
+            if not self._sym_py_paths:
+                return UNKNOWN
+            py_path = self._sym_py_paths.get(fi.def_relpath)
+            if not py_path:
+                return UNKNOWN
+            try:
+                self._sym_ast_cache[fi.def_relpath] = ast.parse(
+                    py_path.read_text(encoding="utf-8")
+                )
+            except SyntaxError:
+                return UNKNOWN
+
+        # Find the function node by its def_key
+        func_node = None
+        for n in ast.walk(self._sym_ast_cache[fi.def_relpath]):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if f"{n.lineno}:{n.col_offset + 4}" == fi.def_key:
+                    func_node = n
+                    break
+        if func_node is None:
+            return UNKNOWN
+
+        self._sym_computing.add(memo_key)
+        result = infer_return_with_args(
+            func_node, arg_types, self._registry, fi.def_relpath,
+            depth=self._sym_depth - 1,
+            memo=self._sym_memo,
+            computing=self._sym_computing,
+            ast_cache=self._sym_ast_cache,
+            py_paths=self._sym_py_paths,
+        )
+        self._sym_computing.discard(memo_key)
+        self._sym_memo[memo_key] = result
+        return result
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         info = self._registry.imports.get(self._relpath)
@@ -570,8 +652,12 @@ class _InferVisitor(ast.NodeVisitor):
             if name in _BUILTINS:
                 return _BUILTINS[name]
             fi = self._func_info_for(name) or self._resolve_imported_func(name)
-            if fi and fi.return_type != UNKNOWN:
-                return fi.return_type
+            if fi:
+                sym_t = self._try_sym_call(fi, node)
+                if sym_t != UNKNOWN:
+                    return sym_t
+                if fi.return_type != UNKNOWN:
+                    return fi.return_type
         elif isinstance(node.func, ast.Attribute):
             attr = node.func.attr
             val_t = self._infer_expr(node.func.value)
@@ -583,6 +669,16 @@ class _InferVisitor(ast.NodeVisitor):
                 return val_t.args[0]
             if val_t.base == "dict" and attr in ("get", "pop", "setdefault") and len(val_t.args) >= 2:
                 return val_t.args[1]
+            # Project class instance method: obj.method()
+            if val_t != UNKNOWN:
+                for reg_key, fi in self._registry.functions.items():
+                    if reg_key.endswith(f":{val_t.base}.{attr}"):
+                        sym_t = self._try_sym_call(fi, node)
+                        if sym_t != UNKNOWN:
+                            return sym_t
+                        if fi.return_type != UNKNOWN:
+                            return fi.return_type
+                        break
             # module.Class() or module.func() via `import module`
             if isinstance(node.func.value, ast.Name):
                 source_rp = self._resolve_module_relpath(node.func.value.id)
@@ -590,8 +686,12 @@ class _InferVisitor(ast.NodeVisitor):
                     if f"{source_rp}:{attr}" in self._registry.classes:
                         return TypeExpr(attr)
                     fi = self._registry.functions.get(f"{source_rp}:{attr}")
-                    if fi and fi.return_type != UNKNOWN:
-                        return fi.return_type
+                    if fi:
+                        sym_t = self._try_sym_call(fi, node)
+                        if sym_t != UNKNOWN:
+                            return sym_t
+                        if fi.return_type != UNKNOWN:
+                            return fi.return_type
         return UNKNOWN
 
     def _infer_attribute(self, node: ast.Attribute) -> TypeExpr:

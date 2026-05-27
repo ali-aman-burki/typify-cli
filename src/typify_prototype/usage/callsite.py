@@ -73,14 +73,23 @@ def infer_callsite_returns(
     py_path_map: dict[str, Path],
     registry: Registry,
     all_entries: dict[str, dict[str, dict]],
+    sym_depth: int = 0,
 ) -> None:
     """
     For each recorded callsite, simulate the callee body with that call's specific argument
     types and write the resulting return type into the callsite's type.usage field.
+
+    sym_depth controls how many levels of project-function calls are recursively simulated
+    inside each body. 0 means no recursion (use pre-computed return types for inner calls).
     """
     from .infer import infer_return_with_args
 
-    # Group records by callee file so each file is parsed at most once.
+    # Shared state for the entire simulation run
+    memo: dict = {}
+    computing: set = set()
+    ast_cache: dict[str, ast.Module] = {}
+
+    # Group records by callee file so each file is walked at most once.
     by_relpath: dict[str, list[CallsiteRecord]] = defaultdict(list)
     for record in registry.callsite_records:
         by_relpath[record.callee_fi.def_relpath].append(record)
@@ -93,6 +102,7 @@ def infer_callsite_returns(
             tree = ast.parse(py_path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
+        ast_cache[relpath] = tree
 
         # Index function nodes by def_key ("line:col+4")
         func_nodes: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
@@ -119,6 +129,18 @@ def infer_callsite_returns(
             if site_key not in func_entry.get("callsites", {}):
                 continue
 
-            ret_t = infer_return_with_args(func_node, record.arg_types, registry, relpath)
+            ret_t = infer_return_with_args(
+                func_node, record.arg_types, registry, relpath,
+                depth=sym_depth,
+                memo=memo,
+                computing=computing,
+                ast_cache=ast_cache,
+                py_paths=py_path_map,
+            )
             if ret_t != UNKNOWN:
                 func_entry["callsites"][site_key]["type"]["usage"] = str(ret_t)
+                # Mirror the result into the Call entry in the caller file
+                caller_entries = all_entries.get(record.caller_relpath, {})
+                call_entry = caller_entries.get(record.call_key)
+                if call_entry and call_entry.get("node_type") == "Call":
+                    call_entry["type"]["usage"] = str(ret_t)

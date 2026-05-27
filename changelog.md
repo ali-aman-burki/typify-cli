@@ -162,7 +162,7 @@ Common methods on `str`, `bytes`, `list`, `dict`, and `set` have hardcoded retur
   }
   ```
 - `params` contains every parameter observed at that call site with its inferred argument type.
-- `type` contains the function's general inferred return type (shared across all call sites; per-callsite symbolic execution is deferred).
+- `type` contains the return type inferred by simulating the function body with that call site's specific argument types (see Symbolic execution below).
 
 ### Union of observed parameter types
 - After all call sites are recorded, the inferred argument types for each parameter are unioned across all call sites.
@@ -178,6 +178,34 @@ Common methods on `str`, `bytes`, `list`, `dict`, and `set` have hardcoded retur
 - For class methods, `cls` is typed as `type[ClassName]`.
 
 ### What callsite inference does not cover
-- Per-callsite symbolic execution (context-sensitive return types require simulating the function body per call — deferred).
 - `*args` / `**kwargs` splatting at call sites (starred arguments are skipped during positional mapping).
 - `goto` on `Name` references pointing back to variable definition sites.
+
+---
+
+## Symbolic execution (baseline)
+
+### Per-callsite return type inference
+- After callsite aggregation, each callsite's return type is inferred by simulating the callee's function body with that call's specific argument types seeded into the scope, rather than using the function's single pre-computed general return type.
+- This means `method(2)` and `method("x")` can produce different per-callsite return types when the return value depends on the argument.
+
+### Depth-limited inter-procedural recursion
+- When simulating a function body, calls to other project-defined functions inside that body are recursively simulated with the same mechanism rather than falling back to their general pre-computed return type.
+- The recursion depth is controlled by the `"symbolic-depth"` config key (default `3`). At depth 0, inner project calls fall back to the pre-computed return type.
+- Covers plain function calls (`double(x)`), from-imported functions, and `module.func()` calls. Also covers project class instance method calls (`obj.method()`), which previously returned a blank type from `_infer_call`.
+
+### Memoisation and cycle detection
+- A shared memo dict caches `(def_relpath, def_key, frozenset of arg-type pairs) → TypeExpr` across all callsite simulations in a single run. The same (function, arg-types) pair is never simulated twice.
+- A "computing" set tracks the current call stack. If a (function, arg-types) pair is encountered again while it is already being computed, `UNKNOWN` is returned immediately (cycle guard), preventing infinite loops on recursive functions.
+
+### AST cache
+- Each source file's AST is parsed at most once per run and cached for the duration of symbolic execution, so deeply chained calls into many-file projects do not repeatedly re-parse the same files.
+
+### Configuration
+- `"symbolic-depth"` (int, default `3`) — set in `config.json` to control how many levels of project-function calls are recursively simulated per callsite. Set to `0` to disable inter-procedural recursion.
+
+### What symbolic execution does not yet cover
+- Attribute access on symbolically-typed objects (instance fields and methods on types that are only known within the simulation scope, not from the registry)
+- `isinstance` type narrowing inside branches
+- Fixpoint iteration for recursive functions (currently returns `UNKNOWN` on re-entry; the base-case value propagates but multi-step recursion stays blank)
+- `*args` / `**kwargs` splatting

@@ -25,6 +25,7 @@ _DEFAULT_CONFIG = {
     "type4py": True,
     "type4py-api-url": "https://type4py.ali-aman.ca/api/predict?tc=0",
     "augment-context": False,
+    "symbolic-depth": 3,
 }
 
 
@@ -118,6 +119,56 @@ def _save_changed(
     path.write_text(json.dumps(updated, indent="\t", ensure_ascii=False), encoding="utf-8")
 
 
+def _read_inference_snapshot(path: Path) -> dict:
+    """Extract non-empty retrieved/type4py fields from an existing entry JSON."""
+    old = json.loads(path.read_text(encoding="utf-8"))
+    snap: dict[str, dict] = {}
+    for key, entry in old.items():
+        entry_snap: dict = {}
+        if "type" in entry:
+            if entry["type"].get("retrieved") or entry["type"].get("type4py"):
+                entry_snap["retrieved"] = entry["type"]["retrieved"]
+                entry_snap["type4py"] = entry["type"]["type4py"]
+        if "params" in entry:
+            params_snap: dict[str, dict] = {}
+            for p, pdata in entry["params"].items():
+                if pdata.get("retrieved") or pdata.get("type4py"):
+                    params_snap[p] = {
+                        "retrieved": pdata["retrieved"],
+                        "type4py": pdata["type4py"],
+                    }
+            if params_snap:
+                entry_snap["params"] = params_snap
+        if entry_snap:
+            snap[key] = entry_snap
+    return snap
+
+
+def _apply_snapshot(
+    entries: dict,
+    snap: dict,
+    restore_retrieved: bool,
+    restore_type4py: bool,
+) -> None:
+    """Merge snapshotted retrieved/type4py fields back into in-memory entries."""
+    for key, entry_snap in snap.items():
+        entry = entries.get(key)
+        if entry is None:
+            continue
+        if "type" in entry:
+            if restore_retrieved and "retrieved" in entry_snap:
+                entry["type"]["retrieved"] = entry_snap["retrieved"]
+            if restore_type4py and "type4py" in entry_snap:
+                entry["type"]["type4py"] = entry_snap["type4py"]
+        if "params" in entry and "params" in entry_snap:
+            for p, psnap in entry_snap["params"].items():
+                if p in entry["params"]:
+                    if restore_retrieved and "retrieved" in psnap:
+                        entry["params"][p]["retrieved"] = psnap["retrieved"]
+                    if restore_type4py and "type4py" in psnap:
+                        entry["params"][p]["type4py"] = psnap["type4py"]
+
+
 def _load_config(output_dir: Path) -> dict:
     config_path = output_dir / "config.json"
     if config_path.exists():
@@ -152,6 +203,43 @@ def _cmd_infer(args: argparse.Namespace) -> None:
         (p, str(p.relative_to(input_dir))) for p in py_files
     ]
     pad = len(str(len(py_files) - 1))
+
+    use_retrieval = config.get("context-retrieval", _DEFAULT_CONFIG["context-retrieval"])
+    use_type4py = config.get("type4py", _DEFAULT_CONFIG["type4py"])
+
+    # Before pass 1 wipes existing JSONs, snapshot retrieved/type4py data for files
+    # that won't be reprocessed by passes 4/5 so we can restore it afterwards.
+    prev_retrieval: dict = {}
+    prev_type4py: dict = {}
+    retrieval_changed: set[str] = set()
+    type4py_changed: set[str] = set()
+    new_sigs: dict[str, dict] = {}
+    old_inference: dict[str, dict] = {}   # relpath -> snapshot
+    restore_retrieved_for: set[str] = set()
+    restore_type4py_for: set[str] = set()
+
+    if use_retrieval or use_type4py:
+        prev_retrieval = _load_changed(output_dir / "retrieval-changed.json")
+        prev_type4py = _load_changed(output_dir / "type4py-changed.json")
+        retrieval_changed, type4py_changed, new_sigs = _compute_changed(
+            pairs, prev_retrieval, prev_type4py, use_retrieval, use_type4py
+        )
+        all_relpaths = {r for _, r in pairs}
+        restore_retrieved_for = (all_relpaths - retrieval_changed) if use_retrieval else all_relpaths
+        restore_type4py_for = (all_relpaths - type4py_changed) if use_type4py else all_relpaths
+        needs_snapshot = restore_retrieved_for | restore_type4py_for
+
+        old_index_path = output_dir / "index.json"
+        if old_index_path.exists() and needs_snapshot:
+            old_index = json.loads(old_index_path.read_text(encoding="utf-8"))
+            for relpath in needs_snapshot:
+                old_rel = old_index.get(relpath)
+                if old_rel:
+                    old_json_path = output_dir / old_rel
+                    if old_json_path.exists():
+                        snap = _read_inference_snapshot(old_json_path)
+                        if snap:
+                            old_inference[relpath] = snap
 
     # Pass 1: collect skeleton entries and write initial JSONs immediately
     all_entries: dict[str, dict[str, dict]] = {}
@@ -192,9 +280,10 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     # Pass 3b: callsite aggregation — writes callsites, unions param types
     apply_callsites(registry, all_entries)
 
-    # Pass 3b.5: per-callsite return type inference
+    # Pass 3b.5: per-callsite return type inference (with optional symbolic recursion)
+    sym_depth: int = config.get("symbolic-depth", _DEFAULT_CONFIG["symbolic-depth"])
     py_path_map = {relpath: py_path for py_path, relpath in pairs}
-    infer_callsite_returns(py_path_map, registry, all_entries)
+    infer_callsite_returns(py_path_map, registry, all_entries, sym_depth=sym_depth)
 
     # Pass 3c: re-propagate callsite-inferred param types through function bodies
     for py_path, relpath in track(pairs, description="Body propagation   "):
@@ -204,16 +293,20 @@ def _cmd_infer(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
 
-    use_retrieval = config.get("context-retrieval", _DEFAULT_CONFIG["context-retrieval"])
-    use_type4py = config.get("type4py", _DEFAULT_CONFIG["type4py"])
-
-    if use_retrieval or use_type4py:
-        prev_retrieval = _load_changed(output_dir / "retrieval-changed.json")
-        prev_type4py = _load_changed(output_dir / "type4py-changed.json")
-        retrieval_changed, type4py_changed, new_sigs = _compute_changed(
-            pairs, prev_retrieval, prev_type4py, use_retrieval, use_type4py
+    # Restore retrieved/type4py results for files that won't be reprocessed by passes 4/5
+    for relpath, snap in old_inference.items():
+        _apply_snapshot(
+            all_entries[relpath],
+            snap,
+            relpath in restore_retrieved_for,
+            relpath in restore_type4py_for,
+        )
+        out_paths[relpath].write_text(
+            json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
+            encoding="utf-8",
         )
 
+    if use_retrieval or use_type4py:
         # Pass 4: retrieval-driven inference (skipped if index is absent or disabled)
         index_dir = output_dir / "context-index"
         retrieval_pairs = [(p, r) for p, r in pairs if r in retrieval_changed]
