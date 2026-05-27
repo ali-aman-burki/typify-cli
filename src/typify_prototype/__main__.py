@@ -1,9 +1,11 @@
 import json
 import argparse
 import sys
+import zipfile
 from pathlib import Path
 
-from rich.progress import track
+import gdown
+from rich.progress import Progress, SpinnerColumn, TextColumn, track
 
 from .pipeline import collect_entries
 from .usage.symbol_table import Registry
@@ -12,17 +14,39 @@ from .usage.infer import infer_file
 from .retrieval.build import build_index
 from .retrieval.query import TypeRetriever
 from .retrieval.retrieve_file import retrieve_file
-from .type4py.client import DEFAULT_API_URL
 from .type4py.infer_file import infer_file as type4py_infer_file
 
 _DEFAULT_CONFIG = {
     "context-retrieval": True,
+    "context-index-download": "https://drive.google.com/file/d/1rzxFqKOo-A4mlctp6bzekky_80EIS-Xa/view?usp=sharing",
     "retrieval-top-k": 5,
     "type4py": True,
-    "type4py-api-url": DEFAULT_API_URL,
+    "type4py-api-url": "https://type4py.ali-aman.ca/api/predict?tc=0",
     "augment-context": False,
-    "deep-learn": False,
 }
+
+
+def _maybe_download_index(output_dir: Path, config: dict) -> None:
+    """Download and extract the context index if retrieval is on and index is absent."""
+    if not config.get("context-retrieval", _DEFAULT_CONFIG["context-retrieval"]):
+        return
+    index_dir = output_dir / "context-index"
+    if index_dir.is_dir():
+        return
+    url = config.get("context-index-download", _DEFAULT_CONFIG["context-index-download"])
+    if not url:
+        return
+
+    zip_path = output_dir / "context-index.zip"
+    with Progress(SpinnerColumn(), TextColumn("{task.description}"), transient=False) as progress:
+        task = progress.add_task("Downloading context index...", total=None)
+        gdown.download(url=url, output=str(zip_path), quiet=True)
+        progress.update(task, description="Extracting context index...  ")
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            index_dir.mkdir(parents=True, exist_ok=True)
+            zf.extractall(index_dir)
+        progress.update(task, description="Context index ready.         ")
+    zip_path.unlink(missing_ok=True)
 
 
 def _load_config(output_dir: Path) -> dict:
@@ -49,7 +73,9 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config = _load_config(output_dir)
-    top_k: int = config.get("retrieval-top-k", 5)
+    top_k: int = config.get("retrieval-top-k", _DEFAULT_CONFIG["retrieval-top-k"])
+
+    _maybe_download_index(output_dir, config)
 
     pairs: list[tuple[Path, str]] = [
         (p, str(p.relative_to(input_dir))) for p in py_files
@@ -92,7 +118,7 @@ def _cmd_infer(args: argparse.Namespace) -> None:
 
     # Pass 4: retrieval-driven inference (skipped if index is absent or disabled)
     index_dir = output_dir / "context-index"
-    if config.get("context-retrieval", True) and index_dir.is_dir():
+    if config.get("context-retrieval", _DEFAULT_CONFIG["context-retrieval"]) and index_dir.is_dir():
         retriever = TypeRetriever(index_dir)
         for py_path, relpath in track(pairs, description="Retrieval inference"):
             retrieve_file(py_path, relpath, retriever, all_entries[relpath], top_k)
@@ -102,8 +128,8 @@ def _cmd_infer(args: argparse.Namespace) -> None:
             )
 
     # Pass 5: Type4Py inference (skipped if disabled in config)
-    if config.get("type4py", True):
-        api_url = config.get("type4py-api-url", DEFAULT_API_URL)
+    if config.get("type4py", _DEFAULT_CONFIG["type4py"]):
+        api_url = config.get("type4py-api-url", _DEFAULT_CONFIG["type4py-api-url"])
         for py_path, relpath in track(pairs, description="Type4Py inference  "):
             type4py_infer_file(py_path, relpath, all_entries[relpath], api_url)
             out_paths[relpath].write_text(
