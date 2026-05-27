@@ -34,13 +34,14 @@ Entries are sorted by source position (line, then column).
 
 ## Entry object
 
-Every entry has these three fields:
+Every entry has these four fields:
 
 | Field | Type | Description |
 |---|---|---|
 | `scope` | `string` | Dot-separated scope path at the point of definition, e.g. `"F:my_func"` or `"C:MyClass.F:method"`. Empty string at module level. |
 | `identifier` | `string` | The name of the symbol as it appears in source. |
 | `node_type` | `string` | One of `Name`, `Call`, `Parameter`, `Function`, `Class`. |
+| `annotatable` | `boolean` | Whether a type annotation can be syntactically added at this location. `true` for `Function`, `Parameter`, and `Name` nodes that are plain assignment targets (`x = ...` or `x: T = ...`). `false` for all others. |
 
 Additional fields appear depending on `node_type`:
 
@@ -71,6 +72,7 @@ A bare name expression or attribute access — a symbol being read or written. T
   "scope":       "F:main",
   "identifier":  "result",
   "node_type":   "Name",
+  "annotatable": true,
   "type": {
     "usage": "Optional[int]",
     "retrieved": {
@@ -97,6 +99,7 @@ A function being invoked at this position.
   "scope":       "F:main",
   "identifier":  "process",
   "node_type":   "Call",
+  "annotatable": false,
   "type":        { "usage": "list[str]", "retrieved": {}, "type4py": {} },
   "goto":        "core/ops.py:12:4"
 }
@@ -112,6 +115,7 @@ A formal parameter in a function signature.
   "scope":       "F:parse",
   "identifier":  "text",
   "node_type":   "Parameter",
+  "annotatable": true,
   "type":        { "usage": "str", "retrieved": {}, "type4py": {} }
 }
 ```
@@ -128,6 +132,7 @@ A function (or async function) definition. Has `params` and `callsites` instead 
   "scope":       "",
   "identifier":  "parse",
   "node_type":   "Function",
+  "annotatable": true,
   "type":        { "usage": "dict[str, Any]", "retrieved": {}, "type4py": { "dict": { "score": 0.701 } } },
   "params": {
     "text":  { "usage": "str", "retrieved": {}, "type4py": { "str": { "score": 0.991 } } },
@@ -165,7 +170,8 @@ A class definition. Has neither `type` nor `goto`.
 "3:6": {
   "scope":       "",
   "identifier":  "MyProcessor",
-  "node_type":   "Class"
+  "node_type":   "Class",
+  "annotatable": false
 }
 ```
 
