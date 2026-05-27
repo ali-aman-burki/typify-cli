@@ -15,11 +15,11 @@ class ScopeVisitor(ast.NodeVisitor):
     def _record(self, line: int, col: int, identifier: str, node_type: str, params: list[str] | None = None) -> None:
         entry = {"scope": self._scope, "identifier": identifier, "node_type": node_type}
         if node_type != "Class":
-            entry["type"] = {"usage": "", "retrieved": {}}
+            entry["type"] = {"usage": "", "retrieved": {}, "type4py": {}}
         if node_type not in ("Function", "Class", "Parameter"):
             entry["goto"] = ""
         if node_type == "Function":
-            entry["params"] = {p: {"usage": "", "retrieved": {}} for p in (params or [])}
+            entry["params"] = {p: {"usage": "", "retrieved": {}, "type4py": {}} for p in (params or [])}
             entry["callsites"] = {}
         self.entries[f"{line}:{col}"] = entry
 

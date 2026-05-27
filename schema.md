@@ -57,6 +57,7 @@ Additional fields appear depending on `node_type`:
 |---|---|---|
 | `usage` | `string` | Type inferred from usage/context analysis. Empty string if not resolved. |
 | `retrieved` | `object` | Type candidates surfaced by the retrieval system, keyed by type name. Each value is `{"score": float, "hits": int}`. Empty object `{}` until retrieval runs. Candidates are ordered by descending score (insertion order). |
+| `type4py` | `object` | Type predictions from the Type4Py deep learning model, keyed by type name. Each value is `{"score": float}` where score is the model's confidence (0–1). Empty object `{}` until the Type4Py pass runs. Up to ~7 predictions, ordered by descending confidence. Populated for params, local variables, return types, class variables, and module-level variables. |
 
 ---
 
@@ -76,6 +77,10 @@ A bare name expression or attribute access — a symbol being read or written.
       "int":           { "score": 14.2, "hits": 4 },
       "Optional[int]": { "score": 9.1,  "hits": 2 },
       "str":           { "score": 3.0,  "hits": 1 }
+    },
+    "type4py": {
+      "int":           { "score": 0.812 },
+      "Optional[int]": { "score": 0.134 }
     }
   },
   "goto": "utils/helpers.py:38:0"
@@ -92,7 +97,7 @@ A function being invoked at this position.
   "scope":       "F:main",
   "identifier":  "process",
   "node_type":   "Call",
-  "type":        { "usage": "list[str]", "retrieved": {} },
+  "type":        { "usage": "list[str]", "retrieved": {}, "type4py": {} },
   "goto":        "core/ops.py:12:4"
 }
 ```
@@ -107,7 +112,7 @@ A formal parameter in a function signature.
   "scope":       "F:parse",
   "identifier":  "text",
   "node_type":   "Parameter",
-  "type":        { "usage": "str", "retrieved": {} }
+  "type":        { "usage": "str", "retrieved": {}, "type4py": {} }
 }
 ```
 
@@ -123,10 +128,10 @@ A function (or async function) definition. Has `params` and `callsites` instead 
   "scope":       "",
   "identifier":  "parse",
   "node_type":   "Function",
-  "type":        { "usage": "dict[str, Any]", "retrieved": {} },
+  "type":        { "usage": "dict[str, Any]", "retrieved": {}, "type4py": { "dict": { "score": 0.701 } } },
   "params": {
-    "text":  { "usage": "str", "retrieved": {} },
-    "limit": { "usage": "Optional[int]", "retrieved": {} }
+    "text":  { "usage": "str", "retrieved": {}, "type4py": { "str": { "score": 0.991 } } },
+    "limit": { "usage": "Optional[int]", "retrieved": {}, "type4py": { "int": { "score": 0.643 }, "None": { "score": 0.201 } } }
   },
   "callsites": {
     "core/main.py:42:8": {

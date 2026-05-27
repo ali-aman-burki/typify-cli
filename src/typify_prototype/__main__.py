@@ -12,10 +12,14 @@ from .usage.infer import infer_file
 from .retrieval.build import build_index
 from .retrieval.query import TypeRetriever
 from .retrieval.retrieve_file import retrieve_file
+from .type4py.client import DEFAULT_API_URL
+from .type4py.infer_file import infer_file as type4py_infer_file
 
 _DEFAULT_CONFIG = {
     "context-retrieval": True,
     "retrieval-top-k": 5,
+    "type4py": True,
+    "type4py-api-url": DEFAULT_API_URL,
     "augment-context": False,
     "deep-learn": False,
 }
@@ -92,6 +96,16 @@ def _cmd_infer(args: argparse.Namespace) -> None:
         retriever = TypeRetriever(index_dir)
         for py_path, relpath in track(pairs, description="Retrieval inference"):
             retrieve_file(py_path, relpath, retriever, all_entries[relpath], top_k)
+            out_paths[relpath].write_text(
+                json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+    # Pass 5: Type4Py inference (skipped if disabled in config)
+    if config.get("type4py", True):
+        api_url = config.get("type4py-api-url", DEFAULT_API_URL)
+        for py_path, relpath in track(pairs, description="Type4Py inference  "):
+            type4py_infer_file(py_path, relpath, all_entries[relpath], api_url)
             out_paths[relpath].write_text(
                 json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
                 encoding="utf-8",
