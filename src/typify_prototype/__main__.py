@@ -19,10 +19,10 @@ from .retrieval.retrieve_file import retrieve_file
 from .type4py.infer_file import infer_file as type4py_infer_file
 
 _DEFAULT_CONFIG = {
-    "context-retrieval": False,
+    "context-retrieval": True,
     "context-index-download": "https://drive.google.com/file/d/1rzxFqKOo-A4mlctp6bzekky_80EIS-Xa/view?usp=sharing",
     "retrieval-top-k": 5,
-    "type4py": False,
+    "type4py": True,
     "type4py-api-url": "https://type4py.ali-aman.ca/api/predict?tc=0",
     "augment-context": False,
 }
