@@ -3,6 +3,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from rich.progress import track
+
 from .pipeline import collect_entries
 from .usage.symbol_table import Registry
 from .usage.collector import collect
@@ -77,7 +79,7 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     collect([(p, r) for p, r in pairs], registry)
 
     # Pass 3: usage-driven inference
-    for py_path, relpath in pairs:
+    for py_path, relpath in track(pairs, description="Usage inference    "):
         infer_file(py_path, relpath, registry, all_entries[relpath])
         out_paths[relpath].write_text(
             json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
@@ -88,7 +90,7 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     index_dir = output_dir / "context-index"
     if config.get("context-retrieval", True) and index_dir.is_dir():
         retriever = TypeRetriever(index_dir)
-        for py_path, relpath in pairs:
+        for py_path, relpath in track(pairs, description="Retrieval inference"):
             retrieve_file(py_path, relpath, retriever, all_entries[relpath], top_k)
             out_paths[relpath].write_text(
                 json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
