@@ -1,3 +1,4 @@
+import hashlib
 import json
 import argparse
 import sys
@@ -48,6 +49,73 @@ def _maybe_download_index(output_dir: Path, config: dict) -> None:
             zf.extractall(index_dir)
         progress.update(task, description="Context index ready.         ")
     zip_path.unlink(missing_ok=True)
+
+
+def _load_changed(path: Path) -> dict:
+    if path.exists():
+        with path.open(encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def _compute_changed(
+    pairs: list[tuple[Path, str]],
+    prev_retrieval: dict,
+    prev_type4py: dict,
+    use_retrieval: bool,
+    use_type4py: bool,
+) -> tuple[set[str], set[str], dict[str, dict]]:
+    """Return (retrieval_changed, type4py_changed, new_sigs), hashing each file at most once."""
+    retrieval_changed: set[str] = set()
+    type4py_changed: set[str] = set()
+    new_sigs: dict[str, dict] = {}
+    for py_path, relpath in pairs:
+        size = py_path.stat().st_size
+        sha: str | None = None
+
+        r_changed = False
+        if use_retrieval:
+            old = prev_retrieval.get(relpath)
+            if old is None or size != old["size"]:
+                r_changed = True
+            else:
+                sha = hashlib.sha256(py_path.read_bytes()).hexdigest()
+                r_changed = sha != old["sha256"]
+
+        t_changed = False
+        if use_type4py:
+            old = prev_type4py.get(relpath)
+            if old is None or size != old["size"]:
+                t_changed = True
+            else:
+                if sha is None:
+                    sha = hashlib.sha256(py_path.read_bytes()).hexdigest()
+                t_changed = sha != old["sha256"]
+
+        if r_changed or t_changed:
+            if sha is None:
+                sha = hashlib.sha256(py_path.read_bytes()).hexdigest()
+            new_sigs[relpath] = {"size": size, "sha256": sha}
+            if r_changed:
+                retrieval_changed.add(relpath)
+            if t_changed:
+                type4py_changed.add(relpath)
+
+    return retrieval_changed, type4py_changed, new_sigs
+
+
+def _save_changed(
+    path: Path,
+    pairs: list[tuple[Path, str]],
+    prev: dict,
+    new_sigs: dict,
+    pass_changed: set[str],
+) -> None:
+    updated = {
+        relpath: new_sigs[relpath] if relpath in pass_changed else prev[relpath]
+        for _, relpath in pairs
+    }
+    path.write_text(json.dumps(updated, indent="\t", ensure_ascii=False), encoding="utf-8")
 
 
 def _load_config(output_dir: Path) -> dict:
@@ -107,6 +175,12 @@ def _cmd_infer(args: argparse.Namespace) -> None:
         json.dumps(index, indent="\t", ensure_ascii=False), encoding="utf-8"
     )
 
+    # Remove types JSONs for source files deleted since the last run
+    referenced_names = {Path(v).name for v in index.values()}
+    for stale in types_dir.glob("*.json"):
+        if stale.name not in referenced_names:
+            stale.unlink()
+
     # Pass 2: build project-wide registry (classes, functions, field types)
     registry = Registry()
     collect([(p, r) for p, r in pairs], registry)
@@ -130,26 +204,40 @@ def _cmd_infer(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
 
-    # Pass 4: retrieval-driven inference (skipped if index is absent or disabled)
-    index_dir = output_dir / "context-index"
-    if config.get("context-retrieval", _DEFAULT_CONFIG["context-retrieval"]) and index_dir.is_dir():
-        retriever = TypeRetriever(index_dir)
-        for py_path, relpath in track(pairs, description="Retrieval inference"):
-            retrieve_file(py_path, relpath, retriever, all_entries[relpath], top_k)
-            out_paths[relpath].write_text(
-                json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
-                encoding="utf-8",
-            )
+    use_retrieval = config.get("context-retrieval", _DEFAULT_CONFIG["context-retrieval"])
+    use_type4py = config.get("type4py", _DEFAULT_CONFIG["type4py"])
 
-    # Pass 5: Type4Py inference (skipped if disabled in config)
-    if config.get("type4py", _DEFAULT_CONFIG["type4py"]):
-        api_url = config.get("type4py-api-url", _DEFAULT_CONFIG["type4py-api-url"])
-        for py_path, relpath in track(pairs, description="Type4Py inference  "):
-            type4py_infer_file(py_path, relpath, all_entries[relpath], api_url)
-            out_paths[relpath].write_text(
-                json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
-                encoding="utf-8",
-            )
+    if use_retrieval or use_type4py:
+        prev_retrieval = _load_changed(output_dir / "retrieval-changed.json")
+        prev_type4py = _load_changed(output_dir / "type4py-changed.json")
+        retrieval_changed, type4py_changed, new_sigs = _compute_changed(
+            pairs, prev_retrieval, prev_type4py, use_retrieval, use_type4py
+        )
+
+        # Pass 4: retrieval-driven inference (skipped if index is absent or disabled)
+        index_dir = output_dir / "context-index"
+        retrieval_pairs = [(p, r) for p, r in pairs if r in retrieval_changed]
+        if use_retrieval and index_dir.is_dir() and retrieval_pairs:
+            retriever = TypeRetriever(index_dir)
+            for py_path, relpath in track(retrieval_pairs, description="Retrieval inference"):
+                retrieve_file(py_path, relpath, retriever, all_entries[relpath], top_k)
+                out_paths[relpath].write_text(
+                    json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            _save_changed(output_dir / "retrieval-changed.json", pairs, prev_retrieval, new_sigs, retrieval_changed)
+
+        # Pass 5: Type4Py inference (skipped if disabled in config)
+        type4py_pairs = [(p, r) for p, r in pairs if r in type4py_changed]
+        if use_type4py and type4py_pairs:
+            api_url = config.get("type4py-api-url", _DEFAULT_CONFIG["type4py-api-url"])
+            for py_path, relpath in track(type4py_pairs, description="Type4Py inference  "):
+                type4py_infer_file(py_path, relpath, all_entries[relpath], api_url)
+                out_paths[relpath].write_text(
+                    json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            _save_changed(output_dir / "type4py-changed.json", pairs, prev_type4py, new_sigs, type4py_changed)
 
 
 def _cmd_build(args: argparse.Namespace) -> None:
