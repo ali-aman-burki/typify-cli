@@ -45,6 +45,7 @@ class FuncInfo:
     return_type: TypeExpr = field(default_factory=lambda: UNKNOWN)
     def_relpath: str = ""
     def_key: str = ""                           # "line:col" of the Function entry
+    callsite_param_types: dict[str, TypeExpr] = field(default_factory=dict)  # populated by apply_callsites
 
 
 @dataclass

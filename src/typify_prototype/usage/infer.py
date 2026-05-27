@@ -101,19 +101,49 @@ _METHOD_TABLE: dict[str, dict[str, TypeExpr]] = {
 }
 
 
-def infer_file(py_path: Path, relpath: str, registry: Registry, entries: dict[str, dict]) -> None:
+def infer_return_with_args(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    arg_types: dict[str, TypeExpr],
+    registry: Registry,
+    relpath: str,
+) -> TypeExpr:
+    """Simulate a function body with specific argument types and return the inferred return type."""
+    visitor = _InferVisitor(relpath, registry, {}, record_callsites=False)
+    for param, t in arg_types.items():
+        visitor._scope.set(param, t)
+        visitor._scope.set_last(param, t)
+    for stmt in func_node.body:
+        visitor.visit(stmt)
+    ret_exprs = list(_iter_return_exprs(func_node.body))
+    return _union_all(visitor._infer_expr(e) for e in ret_exprs) if ret_exprs else UNKNOWN
+
+
+def infer_file(
+    py_path: Path,
+    relpath: str,
+    registry: Registry,
+    entries: dict[str, dict],
+    record_callsites: bool = True,
+) -> None:
     try:
         tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
     except SyntaxError:
         return
-    _InferVisitor(relpath, registry, entries).visit(tree)
+    _InferVisitor(relpath, registry, entries, record_callsites).visit(tree)
 
 
 class _InferVisitor(ast.NodeVisitor):
-    def __init__(self, relpath: str, registry: Registry, entries: dict[str, dict]) -> None:
+    def __init__(
+        self,
+        relpath: str,
+        registry: Registry,
+        entries: dict[str, dict],
+        record_callsites: bool = True,
+    ) -> None:
         self._relpath = relpath
         self._registry = registry
         self._entries = entries
+        self._record_callsites = record_callsites
         self._scope = Scope()
         self._class_stack: list[str] = []
         # Pre-seed scope with from-imported module-level variables so that
@@ -309,6 +339,12 @@ class _InferVisitor(ast.NodeVisitor):
         self._scope = Scope(parent=outer)
 
         cls_name = self._current_class()
+        qname = (
+            f"{self._relpath}:{cls_name}.{node.name}" if cls_name
+            else f"{self._relpath}:{node.name}"
+        )
+        fi = self._registry.functions.get(qname)
+
         for arg in all_args:
             if arg.arg == "self" and cls_name:
                 t = TypeExpr(cls_name)
@@ -316,6 +352,11 @@ class _InferVisitor(ast.NodeVisitor):
                 t = TypeExpr("type", (TypeExpr(cls_name),))
             else:
                 t = from_annotation(arg.annotation) or UNKNOWN
+            # In a re-propagation pass, prefer callsite-inferred types over annotation/Unknown
+            if fi:
+                callsite_t = fi.callsite_param_types.get(arg.arg, UNKNOWN)
+                if callsite_t != UNKNOWN:
+                    t = callsite_t
             self._scope.set(arg.arg, t)
             self._scope.set_last(arg.arg, t)
             self._set_type(self._key(arg.lineno, arg.col_offset), t)
@@ -335,13 +376,6 @@ class _InferVisitor(ast.NodeVisitor):
         func_key = self._key(node.lineno, node.col_offset + 4)
         self._set_type(func_key, ret_t)
 
-        # Push return type into the registry so callers can use it
-        cls = self._current_class()
-        qname = (
-            f"{self._relpath}:{cls}.{node.name}" if cls
-            else f"{self._relpath}:{node.name}"
-        )
-        fi = self._registry.functions.get(qname)
         if fi and ret_t != UNKNOWN:
             fi.return_type = ret_t
 
@@ -433,7 +467,7 @@ class _InferVisitor(ast.NodeVisitor):
         for kw in node.keywords:
             self.visit(kw.value)
 
-        if resolved:
+        if resolved and self._record_callsites:
             fi, call_key = resolved
             arg_types = self._map_args_to_params(node, fi)
             self._registry.callsite_records.append(CallsiteRecord(

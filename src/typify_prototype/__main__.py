@@ -11,7 +11,7 @@ from .pipeline import collect_entries
 from .usage.symbol_table import Registry
 from .usage.collector import collect
 from .usage.infer import infer_file
-from .usage.callsite import apply_callsites
+from .usage.callsite import apply_callsites, infer_callsite_returns
 from .retrieval.build import build_index
 from .retrieval.query import TypeRetriever
 from .retrieval.retrieve_file import retrieve_file
@@ -115,7 +115,14 @@ def _cmd_infer(args: argparse.Namespace) -> None:
 
     # Pass 3b: callsite aggregation — writes callsites, unions param types
     apply_callsites(registry, all_entries)
-    for relpath in all_entries:
+
+    # Pass 3b.5: per-callsite return type inference
+    py_path_map = {relpath: py_path for py_path, relpath in pairs}
+    infer_callsite_returns(py_path_map, registry, all_entries)
+
+    # Pass 3c: re-propagate callsite-inferred param types through function bodies
+    for py_path, relpath in track(pairs, description="Body propagation   "):
+        infer_file(py_path, relpath, registry, all_entries[relpath], record_callsites=False)
         out_paths[relpath].write_text(
             json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
             encoding="utf-8",
