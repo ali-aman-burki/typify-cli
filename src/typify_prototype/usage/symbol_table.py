@@ -44,6 +44,20 @@ class FuncInfo:
 
 
 @dataclass
+class ImportInfo:
+    # from X import Y [as Z]: local_name → (source_relpath, original_name)
+    names: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # import X [as Y]: local_alias → source_relpath
+    modules: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class Registry:
     classes: dict[str, ClassInfo] = field(default_factory=dict)
     functions: dict[str, FuncInfo] = field(default_factory=dict)
+    # dotted module name → relpath, e.g. "foo.bar" → "foo/bar.py"
+    module_index: dict[str, str] = field(default_factory=dict)
+    # relpath → ImportInfo for that file
+    imports: dict[str, ImportInfo] = field(default_factory=dict)
+    # relpath → {name: TypeExpr} for module-level variables
+    module_vars: dict[str, dict[str, TypeExpr]] = field(default_factory=dict)

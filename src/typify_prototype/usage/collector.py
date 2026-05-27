@@ -2,10 +2,20 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from .type_expr import TypeExpr, UNKNOWN, union, from_annotation
-from .symbol_table import Registry, ClassInfo, FuncInfo
+from .symbol_table import Registry, ClassInfo, FuncInfo, ImportInfo
 
 
 def collect(py_files: list[tuple[Path, str]], registry: Registry) -> None:
+    # Build module index first so import resolution works during collection.
+    for _, relpath in py_files:
+        p = Path(relpath)
+        if p.name == "__init__.py":
+            parts = p.parts[:-1]
+        else:
+            parts = p.with_suffix("").parts
+        if parts:
+            registry.module_index[".".join(parts)] = relpath
+
     for py_path, relpath in py_files:
         try:
             tree = ast.parse(py_path.read_text(encoding="utf-8"))
@@ -41,15 +51,83 @@ class _CollectVisitor(ast.NodeVisitor):
         if node.args.kwarg:
             all_args.append(node.args.kwarg)
         params = [a.arg for a in all_args if a.arg != "self"]
-        self._registry.functions[self._func_qname(node.name)] = FuncInfo(
-            name=node.name, params=params
-        )
+        fi = FuncInfo(name=node.name, params=params)
+        self._registry.functions[self._func_qname(node.name)] = fi
+
+        # Pre-compute return type so cross-file callers can use it in Pass 2.
+        if node.returns:
+            t = from_annotation(node.returns)
+            if t:
+                fi.return_type = t
+        else:
+            for expr in _iter_return_exprs(node):
+                t = _literal_type_of(expr)
+                if t != UNKNOWN:
+                    fi.return_type = union(fi.return_type, t)
+
         if node.name == "__init__" and self._class_stack:
             cls_info = self._registry.classes.get(self._cls_qname(self._class_stack[-1]))
             if cls_info is not None:
                 _collect_init_fields(node, cls_info)
 
     visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if self._class_stack:
+            return  # only capture module-level assignments
+        t = _literal_type_of(node.value)
+        if t == UNKNOWN:
+            return
+        vars_ = self._registry.module_vars.setdefault(self._relpath, {})
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                vars_[target.id] = t
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if self._class_stack:
+            return
+        t = from_annotation(node.annotation) or UNKNOWN
+        if t == UNKNOWN and node.value is not None:
+            t = _literal_type_of(node.value)
+        if t != UNKNOWN and isinstance(node.target, ast.Name):
+            self._registry.module_vars.setdefault(self._relpath, {})[node.target.id] = t
+
+    def visit_Import(self, node: ast.Import) -> None:
+        info = self._registry.imports.setdefault(self._relpath, ImportInfo())
+        for alias in node.names:
+            # Resolve the top-level module name to a relpath.
+            source_rp = (
+                self._registry.module_index.get(alias.name)
+                or self._registry.module_index.get(alias.name.split(".")[0])
+            )
+            if source_rp:
+                local = alias.asname or alias.name.split(".")[0]
+                info.modules[local] = source_rp
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        info = self._registry.imports.setdefault(self._relpath, ImportInfo())
+        abs_mod = self._abs_module(node.module or "", node.level)
+        source_rp = self._registry.module_index.get(abs_mod) if abs_mod else None
+        if source_rp is None:
+            return
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            local = alias.asname or alias.name
+            info.names[local] = (source_rp, alias.name)
+
+    def _abs_module(self, module: str, level: int) -> str | None:
+        """Resolve a relative import level+module to an absolute dotted module name."""
+        if level == 0:
+            return module or None
+        pkg_parts = list(Path(self._relpath).parts[:-1])
+        for _ in range(level - 1):
+            if pkg_parts:
+                pkg_parts.pop()
+        pkg = ".".join(pkg_parts)
+        if module:
+            return f"{pkg}.{module}" if pkg else module
+        return pkg or None
 
 
 def _collect_init_fields(node: ast.FunctionDef, cls_info: ClassInfo) -> None:
@@ -103,3 +181,19 @@ def _union_all(types) -> TypeExpr:
     for t in types:
         result = union(result, t)
     return result
+
+
+def _iter_return_exprs(func_node: ast.FunctionDef):
+    """Yield return-value expression nodes without crossing nested scope boundaries."""
+    def _walk(stmts):
+        for stmt in stmts:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(stmt, ast.Return) and stmt.value is not None:
+                yield stmt.value
+            for _, val in ast.iter_fields(stmt):
+                if isinstance(val, list):
+                    for item in val:
+                        if isinstance(item, ast.stmt):
+                            yield from _walk([item])
+    yield from _walk(func_node.body)

@@ -149,6 +149,19 @@ class _InferVisitor(ast.NodeVisitor):
                 return fi
         return self._registry.functions.get(f"{self._relpath}:{func_name}")
 
+    def _resolve_module_relpath(self, alias: str) -> str | None:
+        """Return the relpath for a module imported as `import X [as alias]`."""
+        info = self._registry.imports.get(self._relpath)
+        return info.modules.get(alias) if info else None
+
+    def _resolve_imported_func(self, local_name: str):
+        """Return FuncInfo for a name imported via `from X import Y [as local_name]`."""
+        info = self._registry.imports.get(self._relpath)
+        if not info or local_name not in info.names:
+            return None
+        source_rp, orig_name = info.names[local_name]
+        return self._registry.functions.get(f"{source_rp}:{orig_name}")
+
     # ── scope-managing visitors ───────────────────────────────────────────
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -207,7 +220,7 @@ class _InferVisitor(ast.NodeVisitor):
         if fi and ret_t != UNKNOWN:
             fi.return_type = ret_t
 
-        # Update Function entry's params with inferred types
+        # Update Function entry's params and the corresponding Parameter entries.
         entry = self._entries.get(func_key)
         if entry and entry.get("node_type") == "Function":
             for arg in all_args:
@@ -216,6 +229,7 @@ class _InferVisitor(ast.NodeVisitor):
                 t = self._scope.get(arg.arg)
                 if t != UNKNOWN:
                     entry["params"][arg.arg]["usage"] = str(t)
+                    self._set_type(self._key(arg.lineno, arg.col_offset), t)
 
         self._scope = outer
 
@@ -352,7 +366,7 @@ class _InferVisitor(ast.NodeVisitor):
                 return TypeExpr(name)
             if name in _BUILTINS:
                 return _BUILTINS[name]
-            fi = self._func_info_for(name)
+            fi = self._func_info_for(name) or self._resolve_imported_func(name)
             if fi and fi.return_type != UNKNOWN:
                 return fi.return_type
         elif isinstance(node.func, ast.Attribute):
@@ -366,15 +380,39 @@ class _InferVisitor(ast.NodeVisitor):
                 return val_t.args[0]
             if val_t.base == "dict" and attr in ("get", "pop", "setdefault") and len(val_t.args) >= 2:
                 return val_t.args[1]
+            # module.Class() or module.func() via `import module`
+            if isinstance(node.func.value, ast.Name):
+                source_rp = self._resolve_module_relpath(node.func.value.id)
+                if source_rp:
+                    if f"{source_rp}:{attr}" in self._registry.classes:
+                        return TypeExpr(attr)
+                    fi = self._registry.functions.get(f"{source_rp}:{attr}")
+                    if fi and fi.return_type != UNKNOWN:
+                        return fi.return_type
         return UNKNOWN
 
     def _infer_attribute(self, node: ast.Attribute) -> TypeExpr:
         val_t = self._infer_expr(node.value)
-        if val_t == UNKNOWN:
-            return UNKNOWN
-        cls_info = self._class_info_for(val_t.base)
-        if cls_info and node.attr in cls_info.fields:
-            return cls_info.fields[node.attr]
+
+        # Instance field access: obj.field where obj's type is a known class.
+        if val_t != UNKNOWN:
+            cls_info = self._class_info_for(val_t.base)
+            if cls_info and node.attr in cls_info.fields:
+                return cls_info.fields[node.attr]
+
+        # Module attribute read: module.SomeClass, module.some_func, or module.some_var
+        if isinstance(node.value, ast.Name):
+            source_rp = self._resolve_module_relpath(node.value.id)
+            if source_rp:
+                if f"{source_rp}:{node.attr}" in self._registry.classes:
+                    return TypeExpr(node.attr)
+                fi = self._registry.functions.get(f"{source_rp}:{node.attr}")
+                if fi:
+                    return TypeExpr("Callable")
+                t = self._registry.module_vars.get(source_rp, {}).get(node.attr, UNKNOWN)
+                if t != UNKNOWN:
+                    return t
+
         return UNKNOWN
 
     def _infer_binop(self, node: ast.BinOp) -> TypeExpr:

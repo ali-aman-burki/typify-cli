@@ -112,10 +112,34 @@ Common methods on `str`, `bytes`, `list`, `dict`, and `set` have hardcoded retur
 ### What is not yet inferred (left blank)
 - For/with loop target variable types
 - Tuple unpacking (`a, b = expr`)
-- Cross-file function return types (return types are propagated within a file only)
 - Callsite-driven parameter inference
-- Import resolution (imported names have no type)
 - Types that require control-flow sensitivity (variable re-assigned under `if`)
 - Comprehension element types
 - `*args` / `**kwargs` parameter types
 - Inferred types from exception handlers
+- Third-party library imports (only intra-project imports are resolved)
+
+---
+
+## Cross-module inference
+
+### Module index
+- At the start of Pass 1, all source file paths are converted to dotted module names (`foo/bar.py` → `foo.bar`, `foo/__init__.py` → `foo`) and stored in a project-wide index. This index is used to resolve import statements to concrete relpaths.
+
+### Import resolution
+- `from foo.bar import MyClass` — the local name `MyClass` is mapped to its definition relpath and original name. Subsequent calls `MyClass()` resolve to `TypeExpr("MyClass")` and attribute accesses `obj.field` resolve through `MyClass`'s field table.
+- `from foo.bar import some_func` — the local name `some_func` is resolved to its `FuncInfo`. Calls `some_func()` return its inferred return type.
+- `import foo.bar` / `import utils` — the module alias is mapped to the source relpath. `module.SomeClass()` resolves to `TypeExpr("SomeClass")`; `module.some_func()` resolves to the function's return type; `module.SomeClass` (bare read) resolves to `TypeExpr("SomeClass")`.
+- Relative imports (`from . import X`, `from .sibling import X`) are resolved to absolute module names using the current file's package path, then looked up in the module index.
+
+### Cross-file return type pre-computation
+- During Pass 1, function return types are pre-populated from return annotations (`-> T`) and from literal-only `return` expressions. This ensures that when file A calls a function defined in file B, the return type is already available when file A is processed in Pass 2, regardless of file processing order.
+
+### Module-level variable access
+- `import main; w = main.x` — if `x` is assigned a literal value at module level in `main.py` (e.g. `x = 2`), `main.x` resolves to `int`. Annotated module-level variables (`x: int = 2`) are also captured using the annotation.
+- Applies to all primitive and collection literals assigned at the top level of any file in the project.
+
+### What cross-module inference does not cover
+- `from module import *` (star imports are skipped)
+- Third-party or stdlib imports (only files within the project directory are indexed)
+- Re-exports: if `foo/__init__.py` imports `Bar` from `foo/bar.py` and re-exports it, `from foo import Bar` resolves to `foo/__init__.py` which may not have `Bar` in its own registry — the original definition in `foo/bar.py` would not be found
