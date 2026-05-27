@@ -115,7 +115,10 @@ def infer_return_with_args(
     for stmt in func_node.body:
         visitor.visit(stmt)
     ret_exprs = list(_iter_return_exprs(func_node.body))
-    return _union_all(visitor._infer_expr(e) for e in ret_exprs) if ret_exprs else UNKNOWN
+    ret_t = _union_all(visitor._infer_expr(e) for e in ret_exprs) if ret_exprs else TypeExpr("None")
+    if ret_exprs and _has_bare_return(func_node.body):
+        ret_t = union(ret_t, TypeExpr("None"))
+    return ret_t
 
 
 def infer_file(
@@ -319,6 +322,26 @@ class _InferVisitor(ast.NodeVisitor):
                 t = TypeExpr("Callable")
             self._set_type(self._key(alias.lineno, alias.col_offset), t)
 
+        # Tag module name parts as "module" if the import resolved to a project module.
+        # Uses the same col-5 layout that pipeline.py uses when creating the entries.
+        if node.module and any(
+            (alias.asname if alias.asname else alias.name) in info.names
+            for alias in node.names
+        ):
+            col = 5
+            for part in node.module.split("."):
+                self._set_type(self._key(node.lineno, col), TypeExpr("module"))
+                col += len(part) + 1
+
+    def visit_Import(self, node: ast.Import) -> None:
+        info = self._registry.imports.get(self._relpath)
+        if not info:
+            return
+        for alias in node.names:
+            local = alias.asname if alias.asname else alias.name.split(".")[0]
+            if local in info.modules:
+                self._set_type(self._key(alias.lineno, alias.col_offset), TypeExpr("module"))
+
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self._class_stack.append(node.name)
         outer = self._scope
@@ -371,7 +394,9 @@ class _InferVisitor(ast.NodeVisitor):
             ret_t = from_annotation(node.returns) or UNKNOWN
         else:
             ret_exprs = list(_iter_return_exprs(node.body))
-            ret_t = _union_all(self._infer_expr(e) for e in ret_exprs) if ret_exprs else UNKNOWN
+            ret_t = _union_all(self._infer_expr(e) for e in ret_exprs) if ret_exprs else TypeExpr("None")
+            if ret_exprs and _has_bare_return(node.body):
+                ret_t = union(ret_t, TypeExpr("None"))
 
         func_key = self._key(node.lineno, node.col_offset + 4)
         self._set_type(func_key, ret_t)
@@ -640,3 +665,18 @@ def _iter_return_exprs(body: list[ast.stmt]):
                 for item in val:
                     if isinstance(item, ast.stmt):
                         yield from _iter_return_exprs([item])
+
+
+def _has_bare_return(body: list[ast.stmt]) -> bool:
+    """Return True if any bare `return` (no expression) exists, without crossing nested scopes."""
+    for stmt in body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(stmt, ast.Return) and stmt.value is None:
+            return True
+        for _field, val in ast.iter_fields(stmt):
+            if isinstance(val, list):
+                for item in val:
+                    if isinstance(item, ast.stmt) and _has_bare_return([item]):
+                        return True
+    return False

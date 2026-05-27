@@ -72,6 +72,8 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     if not py_files:
         return
     output_dir.mkdir(parents=True, exist_ok=True)
+    types_dir = output_dir / "types"
+    types_dir.mkdir(exist_ok=True)
 
     config = _load_config(output_dir)
     top_k: int = config.get("retrieval-top-k", _DEFAULT_CONFIG["retrieval-top-k"])
@@ -94,12 +96,12 @@ def _cmd_infer(args: argparse.Namespace) -> None:
             entries = {}
         all_entries[relpath] = entries
         out_name = f"{i:0{pad}}.json"
-        out_path = output_dir / out_name
+        out_path = types_dir / out_name
         out_paths[relpath] = out_path
         out_path.write_text(
             json.dumps(entries, indent="\t", ensure_ascii=False), encoding="utf-8"
         )
-        index[relpath] = out_name
+        index[relpath] = f"types/{out_name}"
 
     (output_dir / "index.json").write_text(
         json.dumps(index, indent="\t", ensure_ascii=False), encoding="utf-8"

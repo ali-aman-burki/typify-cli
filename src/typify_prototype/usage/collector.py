@@ -68,10 +68,14 @@ class _CollectVisitor(ast.NodeVisitor):
             if t:
                 fi.return_type = t
         else:
+            has_value_returns = False
             for expr in _iter_return_exprs(node):
+                has_value_returns = True
                 t = _literal_type_of(expr)
                 if t != UNKNOWN:
                     fi.return_type = union(fi.return_type, t)
+            if not has_value_returns or _has_bare_return(node.body):
+                fi.return_type = union(fi.return_type, TypeExpr("None"))
 
         if node.name == "__init__" and self._class_stack:
             cls_info = self._registry.classes.get(self._cls_qname(self._class_stack[-1]))
@@ -205,3 +209,18 @@ def _iter_return_exprs(func_node: ast.FunctionDef):
                         if isinstance(item, ast.stmt):
                             yield from _walk([item])
     yield from _walk(func_node.body)
+
+
+def _has_bare_return(body: list[ast.stmt]) -> bool:
+    """Return True if any bare `return` (no expression) exists, without crossing nested scopes."""
+    for stmt in body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(stmt, ast.Return) and stmt.value is None:
+            return True
+        for _, val in ast.iter_fields(stmt):
+            if isinstance(val, list):
+                for item in val:
+                    if isinstance(item, ast.stmt) and _has_bare_return([item]):
+                        return True
+    return False

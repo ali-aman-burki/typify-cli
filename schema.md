@@ -47,7 +47,7 @@ Additional fields appear depending on `node_type`:
 | Field | Present on | Type | Description |
 |---|---|---|---|
 | `type` | All except `Class` | `object` | Type information for this symbol (see below). |
-| `goto` | `Name`, `Call` | `string` | Definition site: `"relpath:line:col"`. |
+| `goto` | `Name`, `Call` | `string` | Definition site: `"relpath:line:col"`. Populated for `Call` nodes (points to the callee `Function` entry). Always empty string on `Name` nodes (variable definition-site resolution is not yet implemented). |
 | `params` | `Function` | `object` | Declared parameter names mapped to their type objects. |
 | `callsites` | `Function` | `object` | All observed call sites (see below). |
 
@@ -64,7 +64,7 @@ Additional fields appear depending on `node_type`:
 ## node_type reference
 
 ### `Name`
-A bare name expression or attribute access — a symbol being read or written.
+A bare name expression or attribute access — a symbol being read or written. The `goto` field is present but always empty string (definition-site linking for names is not yet implemented).
 
 ```json
 "14:4": {
@@ -136,25 +136,25 @@ A function (or async function) definition. Has `params` and `callsites` instead 
   "callsites": {
     "core/main.py:42:8": {
       "params": {
-        "text":  { "usage": "bytes", "retrieved": {} },
-        "limit": { "usage": "int", "retrieved": {} }
+        "text":  { "usage": "bytes", "retrieved": {}, "type4py": {} },
+        "limit": { "usage": "int",   "retrieved": {}, "type4py": {} }
       },
-      "type": { "usage": "dict[int, float]", "retrieved": {} }
+      "type": { "usage": "dict[int, float]", "retrieved": {}, "type4py": {} }
     },
     "tests/test_parse.py:17:4": {
       "params": {
-        "text":  { "usage": "str", "retrieved": {} },
-        "limit": { "usage": "None", "retrieved": {} }
+        "text":  { "usage": "str",  "retrieved": {}, "type4py": {} },
+        "limit": { "usage": "None", "retrieved": {}, "type4py": {} }
       },
-      "type": { "usage": "dict[str, Any]", "retrieved": {} }
+      "type": { "usage": "dict[str, Any]", "retrieved": {}, "type4py": {} }
     }
   }
 }
 ```
 
-`params` represents the declared (definition-site) types of each parameter.
+`params` represents the declared (definition-site) types of each parameter, unioned across all known call sites. For methods, `self` (typed as `ClassName`) and `cls` (typed as `type[ClassName]`) are included alongside the regular parameters.
 
-`callsites` is keyed by location strings (`"relpath:line:col"`). Each value has a `params` mapping (parameter names to the types passed at that call site) and a `type` field (the return type observed at that call site). Different call sites may supply different types for the same parameter or observe different return types, which is the primary signal this schema is designed to capture.
+`callsites` is keyed by location strings (`"relpath:line:col"`). Each value has a `params` mapping (parameter names to the types passed at that call site) and a `type` field (the return type inferred by simulating the function body with that call site's specific argument types). Different call sites may supply different types for the same parameter or observe different return types, which is the primary signal this schema is designed to capture. The `type4py` sub-field within callsite `params` and `type` is always `{}` (Type4Py predictions are only available at definition-site granularity).
 
 ---
 
