@@ -50,8 +50,16 @@ class _CollectVisitor(ast.NodeVisitor):
             all_args.append(node.args.vararg)
         if node.args.kwarg:
             all_args.append(node.args.kwarg)
-        params = [a.arg for a in all_args if a.arg != "self"]
-        fi = FuncInfo(name=node.name, params=params)
+        params = [a.arg for a in all_args]
+        param_keys = {a.arg: f"{a.lineno}:{a.col_offset}" for a in all_args}
+        fi = FuncInfo(
+            name=node.name,
+            class_name=self._class_stack[-1] if self._class_stack else "",
+            params=params,
+            param_keys=param_keys,
+            def_relpath=self._relpath,
+            def_key=f"{node.lineno}:{node.col_offset + 4}",
+        )
         self._registry.functions[self._func_qname(node.name)] = fi
 
         # Pre-compute return type so cross-file callers can use it in Pass 2.

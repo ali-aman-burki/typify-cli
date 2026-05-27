@@ -11,16 +11,17 @@ from .pipeline import collect_entries
 from .usage.symbol_table import Registry
 from .usage.collector import collect
 from .usage.infer import infer_file
+from .usage.callsite import apply_callsites
 from .retrieval.build import build_index
 from .retrieval.query import TypeRetriever
 from .retrieval.retrieve_file import retrieve_file
 from .type4py.infer_file import infer_file as type4py_infer_file
 
 _DEFAULT_CONFIG = {
-    "context-retrieval": True,
+    "context-retrieval": False,
     "context-index-download": "https://drive.google.com/file/d/1rzxFqKOo-A4mlctp6bzekky_80EIS-Xa/view?usp=sharing",
     "retrieval-top-k": 5,
-    "type4py": True,
+    "type4py": False,
     "type4py-api-url": "https://type4py.ali-aman.ca/api/predict?tc=0",
     "augment-context": False,
 }
@@ -111,6 +112,10 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     # Pass 3: usage-driven inference
     for py_path, relpath in track(pairs, description="Usage inference    "):
         infer_file(py_path, relpath, registry, all_entries[relpath])
+
+    # Pass 3b: callsite aggregation — writes callsites, unions param types
+    apply_callsites(registry, all_entries)
+    for relpath in all_entries:
         out_paths[relpath].write_text(
             json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
             encoding="utf-8",

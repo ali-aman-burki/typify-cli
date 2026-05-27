@@ -143,3 +143,41 @@ Common methods on `str`, `bytes`, `list`, `dict`, and `set` have hardcoded retur
 - `from module import *` (star imports are skipped)
 - Third-party or stdlib imports (only files within the project directory are indexed)
 - Re-exports: if `foo/__init__.py` imports `Bar` from `foo/bar.py` and re-exports it, `from foo import Bar` resolves to `foo/__init__.py` which may not have `Bar` in its own registry — the original definition in `foo/bar.py` would not be found
+
+---
+
+## Callsite-driven inference
+
+### Callsite recording
+- During Pass 2, every call to a project-defined function records a `CallsiteRecord` containing the caller file, the call's location key (`line:col`), the resolved `FuncInfo`, and a mapping of parameter names to the types observed at that specific call.
+- Records are accumulated across all files, then consumed in a dedicated post-processing pass (Pass 3b) after all files have been inferred.
+
+### Callsite entries on Function nodes
+- Each `Function` entry in the output JSON gains a `callsites` dict keyed by `"caller_relpath:call_key"`.
+- Each callsite entry has the shape:
+  ```json
+  {
+    "params": { "param_name": {"usage": "...", "retrieved": {}, "type4py": {}} },
+    "type":   {"usage": "...", "retrieved": {}, "type4py": {}}
+  }
+  ```
+- `params` contains every parameter observed at that call site with its inferred argument type.
+- `type` contains the function's general inferred return type (shared across all call sites; per-callsite symbolic execution is deferred).
+
+### Union of observed parameter types
+- After all call sites are recorded, the inferred argument types for each parameter are unioned across all call sites.
+- The unioned type is written back into the `Function` entry's `params[name]["usage"]` field and into the corresponding `Parameter` entry's `type.usage` field, overriding or augmenting what Pass 2 produced from annotations alone.
+
+### `goto` on Call nodes
+- When a call resolves to a project-defined function, the `Call` entry in the output JSON gains a `goto` field pointing to the callee's `Function` entry: `"def_relpath:def_key"`.
+
+### `self` and `cls` handling
+- `self` and `cls` are included in the `params` dict of both `Function` entries and individual callsite entries.
+- For regular method calls `obj.method()`, `self` is typed as the inferred type of the receiver (`obj`).
+- For class instantiation `ClassName(args)`, `self` is typed as `ClassName` (the new instance); the positional call arguments are mapped to the remaining parameters starting from the first after `self`.
+- For class methods, `cls` is typed as `type[ClassName]`.
+
+### What callsite inference does not cover
+- Per-callsite symbolic execution (context-sensitive return types require simulating the function body per call — deferred).
+- `*args` / `**kwargs` splatting at call sites (starred arguments are skipped during positional mapping).
+- `goto` on `Name` references pointing back to variable definition sites.

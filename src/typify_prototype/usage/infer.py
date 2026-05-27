@@ -2,7 +2,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from .type_expr import TypeExpr, UNKNOWN, union, from_annotation
-from .symbol_table import Registry, Scope
+from .symbol_table import Registry, Scope, FuncInfo, CallsiteRecord
 
 
 _BUILTINS: dict[str, TypeExpr] = {
@@ -116,6 +116,15 @@ class _InferVisitor(ast.NodeVisitor):
         self._entries = entries
         self._scope = Scope()
         self._class_stack: list[str] = []
+        # Pre-seed scope with from-imported module-level variables so that
+        # `from a import x; y = x` resolves x's type without an explicit annotation.
+        imp_info = registry.imports.get(relpath)
+        if imp_info:
+            for local_name, (source_rp, orig_name) in imp_info.names.items():
+                t = registry.module_vars.get(source_rp, {}).get(orig_name, UNKNOWN)
+                if t != UNKNOWN:
+                    self._scope.set(local_name, t)
+                    self._scope.set_last(local_name, t)
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -162,7 +171,123 @@ class _InferVisitor(ast.NodeVisitor):
         source_rp, orig_name = info.names[local_name]
         return self._registry.functions.get(f"{source_rp}:{orig_name}")
 
+    def _resolve_callee(self, node: ast.Call) -> tuple[FuncInfo, str] | None:
+        """
+        Try to resolve the called function to a project-defined FuncInfo.
+        Returns (FuncInfo, call_key) or None if unresolvable.
+        call_key is the "line:col" of the Call entry in this file.
+        """
+        if isinstance(node.func, ast.Name):
+            name = node.func.id
+            call_key = self._key(node.func.lineno, node.func.col_offset)
+            # Class instantiation → resolve to __init__
+            if self._is_class_name(name):
+                for reg_key, fi in self._registry.functions.items():
+                    if reg_key.endswith(f":{name}.__init__"):
+                        return fi, call_key
+            fi = self._func_info_for(name) or self._resolve_imported_func(name)
+            if fi:
+                return fi, call_key
+
+        elif isinstance(node.func, ast.Attribute):
+            attr = node.func.attr
+            call_key = self._key(
+                node.func.end_lineno,
+                node.func.end_col_offset - len(node.func.attr),
+            )
+            val_t = self._infer_expr(node.func.value)
+
+            # Instance method call: obj.method() where obj's type is a known class
+            if val_t != UNKNOWN:
+                for reg_key, fi in self._registry.functions.items():
+                    if reg_key.endswith(f":{val_t.base}.{attr}"):
+                        return fi, call_key
+
+            # module.Class() or module.func() via `import module`
+            if isinstance(node.func.value, ast.Name):
+                source_rp = self._resolve_module_relpath(node.func.value.id)
+                if source_rp:
+                    if f"{source_rp}:{attr}" in self._registry.classes:
+                        init_fi = self._registry.functions.get(f"{source_rp}:{attr}.__init__")
+                        if init_fi:
+                            return init_fi, call_key
+                    fi = self._registry.functions.get(f"{source_rp}:{attr}")
+                    if fi:
+                        return fi, call_key
+
+        return None
+
+    def _map_args_to_params(self, node: ast.Call, fi: FuncInfo) -> dict[str, TypeExpr]:
+        """
+        Map call arguments to parameter names, including self/cls.
+        Returns {param_name: inferred_type}.
+        """
+        arg_types: dict[str, TypeExpr] = {}
+        params = list(fi.params)   # working copy; may start with self/cls
+        call_args = list(node.args)  # working copy of positional call arguments
+
+        is_constructor = (
+            isinstance(node.func, ast.Name)
+            and fi.name == "__init__"
+            and self._is_class_name(node.func.id)
+        )
+
+        if params and params[0] in ("self", "cls"):
+            first = params[0]
+            if isinstance(node.func, ast.Attribute):
+                # Implicit receiver: obj.method() or Class.cls_method()
+                if first == "self":
+                    arg_types["self"] = self._infer_expr(node.func.value)
+                else:
+                    cls_name = fi.class_name
+                    arg_types["cls"] = (
+                        TypeExpr("type", (TypeExpr(cls_name),)) if cls_name else UNKNOWN
+                    )
+                params = params[1:]
+            elif is_constructor:
+                # Class instantiation ClassName(args): self is the new instance, not from args
+                arg_types["self"] = TypeExpr(node.func.id)
+                params = params[1:]
+            elif isinstance(node.func, ast.Name) and call_args:
+                # Unbound call MyClass.method(obj, ...) — first arg IS the receiver
+                if first == "self":
+                    arg_types["self"] = self._infer_expr(call_args[0])
+                else:
+                    arg_types["cls"] = self._infer_expr(call_args[0])
+                params = params[1:]
+                call_args = call_args[1:]
+
+        # Positional args (skip starred splats — can't statically map them)
+        for i, arg_node in enumerate(call_args):
+            if isinstance(arg_node, ast.Starred):
+                break
+            if i < len(params):
+                arg_types[params[i]] = self._infer_expr(arg_node)
+
+        # Keyword args
+        for kw in node.keywords:
+            if kw.arg is not None and kw.arg in fi.params:
+                arg_types[kw.arg] = self._infer_expr(kw.value)
+
+        return arg_types
+
     # ── scope-managing visitors ───────────────────────────────────────────
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        info = self._registry.imports.get(self._relpath)
+        if not info:
+            return
+        for alias in node.names:
+            local_name = alias.asname if alias.asname else alias.name
+            if local_name not in info.names:
+                continue
+            source_rp, orig_name = info.names[local_name]
+            t = self._registry.module_vars.get(source_rp, {}).get(orig_name, UNKNOWN)
+            if t == UNKNOWN and f"{source_rp}:{orig_name}" in self._registry.classes:
+                t = TypeExpr("type", (TypeExpr(orig_name),))
+            if t == UNKNOWN and self._registry.functions.get(f"{source_rp}:{orig_name}"):
+                t = TypeExpr("Callable")
+            self._set_type(self._key(alias.lineno, alias.col_offset), t)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         self._class_stack.append(node.name)
@@ -183,14 +308,14 @@ class _InferVisitor(ast.NodeVisitor):
         outer = self._scope
         self._scope = Scope(parent=outer)
 
+        cls_name = self._current_class()
         for arg in all_args:
-            if arg.arg == "self":
-                cls = self._current_class()
-                if cls:
-                    self._scope.set("self", TypeExpr(cls))
-                    self._scope.set_last("self", TypeExpr(cls))
-                continue
-            t = from_annotation(arg.annotation) or UNKNOWN
+            if arg.arg == "self" and cls_name:
+                t = TypeExpr(cls_name)
+            elif arg.arg == "cls" and cls_name:
+                t = TypeExpr("type", (TypeExpr(cls_name),))
+            else:
+                t = from_annotation(arg.annotation) or UNKNOWN
             self._scope.set(arg.arg, t)
             self._scope.set_last(arg.arg, t)
             self._set_type(self._key(arg.lineno, arg.col_offset), t)
@@ -224,11 +349,10 @@ class _InferVisitor(ast.NodeVisitor):
         entry = self._entries.get(func_key)
         if entry and entry.get("node_type") == "Function":
             for arg in all_args:
-                if arg.arg == "self":
-                    continue
                 t = self._scope.get(arg.arg)
                 if t != UNKNOWN:
-                    entry["params"][arg.arg]["usage"] = str(t)
+                    if arg.arg in entry["params"]:
+                        entry["params"][arg.arg]["usage"] = str(t)
                     self._set_type(self._key(arg.lineno, arg.col_offset), t)
 
         self._scope = outer
@@ -283,21 +407,41 @@ class _InferVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         t = self._infer_call(node)
+        resolved = self._resolve_callee(node)
+
         if isinstance(node.func, ast.Attribute):
             key = self._key(
                 node.func.end_lineno,
                 node.func.end_col_offset - len(node.func.attr),
             )
             self._set_type(key, t)
+            if resolved and key in self._entries:
+                fi, _ = resolved
+                self._entries[key]["goto"] = f"{fi.def_relpath}:{fi.def_key}"
             self.visit(node.func.value)
         elif isinstance(node.func, ast.Name):
-            self._set_type(self._key(node.func.lineno, node.func.col_offset), t)
+            key = self._key(node.func.lineno, node.func.col_offset)
+            self._set_type(key, t)
+            if resolved and key in self._entries:
+                fi, _ = resolved
+                self._entries[key]["goto"] = f"{fi.def_relpath}:{fi.def_key}"
         else:
             self.visit(node.func)
+
         for arg in node.args:
             self.visit(arg)
         for kw in node.keywords:
             self.visit(kw.value)
+
+        if resolved:
+            fi, call_key = resolved
+            arg_types = self._map_args_to_params(node, fi)
+            self._registry.callsite_records.append(CallsiteRecord(
+                caller_relpath=self._relpath,
+                call_key=call_key,
+                callee_fi=fi,
+                arg_types=arg_types,
+            ))
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         key = self._key(node.end_lineno, node.end_col_offset - len(node.attr))

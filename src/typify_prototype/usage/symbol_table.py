@@ -39,8 +39,20 @@ class ClassInfo:
 @dataclass
 class FuncInfo:
     name: str
+    class_name: str = ""                        # enclosing class name; "" if module-level
     params: list[str] = field(default_factory=list)
+    param_keys: dict[str, str] = field(default_factory=dict)   # param_name → "line:col"
     return_type: TypeExpr = field(default_factory=lambda: UNKNOWN)
+    def_relpath: str = ""
+    def_key: str = ""                           # "line:col" of the Function entry
+
+
+@dataclass
+class CallsiteRecord:
+    caller_relpath: str
+    call_key: str                               # "line:col" of the Call entry in caller file
+    callee_fi: FuncInfo
+    arg_types: dict[str, TypeExpr] = field(default_factory=dict)   # param_name → observed type
 
 
 @dataclass
@@ -61,3 +73,5 @@ class Registry:
     imports: dict[str, ImportInfo] = field(default_factory=dict)
     # relpath → {name: TypeExpr} for module-level variables
     module_vars: dict[str, dict[str, TypeExpr]] = field(default_factory=dict)
+    # accumulated during Pass 2; consumed by apply_callsites
+    callsite_records: list[CallsiteRecord] = field(default_factory=list)
