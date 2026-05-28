@@ -6,10 +6,18 @@ from .type_expr import TypeExpr, UNKNOWN, union
 from .symbol_table import Registry, CallsiteRecord
 
 
-def apply_callsites(registry: Registry, all_entries: dict[str, dict[str, dict]]) -> None:
+def apply_callsites(
+    registry: Registry,
+    all_entries: dict[str, dict[str, dict]],
+    preserve_callsite_returns: bool = False,
+) -> None:
     """
     Post-processing pass: write callsite records into Function entries,
     union observed param types back into Function.params and Parameter entries.
+
+    When preserve_callsite_returns is True, the "type" dict inside each existing
+    callsite entry is kept as-is (so symbolic return types from infer_callsite_returns
+    are not overwritten) while the "params" dict is still updated.
     """
     # Group records by callee (def_relpath:def_key)
     by_callee: dict[str, list[CallsiteRecord]] = defaultdict(list)
@@ -31,21 +39,25 @@ def apply_callsites(registry: Registry, all_entries: dict[str, dict[str, dict]])
             if site_key in seen:
                 continue
             seen.add(site_key)
-            func_entry["callsites"][site_key] = {
-                "params": {
-                    pname: {
-                        "usage": str(ptype) if ptype != UNKNOWN else "",
-                        "retrieved": {},
-                        "type4py": {},
-                    }
-                    for pname, ptype in record.arg_types.items()
-                },
-                "type": {
-                    "usage": str(fi.return_type) if fi.return_type != UNKNOWN else "",
+            params_dict = {
+                pname: {
+                    "usage": str(ptype) if ptype != UNKNOWN else "",
                     "retrieved": {},
                     "type4py": {},
-                },
+                }
+                for pname, ptype in record.arg_types.items()
             }
+            if preserve_callsite_returns and site_key in func_entry["callsites"]:
+                func_entry["callsites"][site_key]["params"] = params_dict
+            else:
+                func_entry["callsites"][site_key] = {
+                    "params": params_dict,
+                    "type": {
+                        "usage": str(fi.return_type) if fi.return_type != UNKNOWN else "",
+                        "retrieved": {},
+                        "type4py": {},
+                    },
+                }
 
         # Union observed param types across all callsites.
         param_union: dict[str, TypeExpr] = {}
