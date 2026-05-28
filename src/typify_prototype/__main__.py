@@ -12,7 +12,6 @@ from .pipeline import collect_entries
 from .usage.symbol_table import Registry
 from .usage.collector import collect
 from .usage.infer import infer_file
-from .usage.type_expr import UNKNOWN
 from .usage.callsite import apply_callsites, infer_callsite_returns
 from .retrieval.build import build_index
 from .retrieval.query import TypeRetriever
@@ -20,10 +19,10 @@ from .retrieval.retrieve_file import retrieve_file
 from .type4py.infer_file import infer_file as type4py_infer_file
 
 _DEFAULT_CONFIG = {
-    "context-retrieval": False,
+    "context-retrieval": True,
     "context-index-download": "https://drive.google.com/file/d/1rzxFqKOo-A4mlctp6bzekky_80EIS-Xa/view?usp=sharing",
     "retrieval-top-k": 5,
-    "type4py": False,
+    "type4py": True,
     "type4py-api-url": "https://type4py.ali-aman.ca/api/predict?tc=0",
     "augment-context": False,
     "symbolic-depth": 3,
@@ -286,30 +285,9 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     py_path_map = {relpath: py_path for py_path, relpath in pairs}
     infer_callsite_returns(py_path_map, registry, all_entries, sym_depth=sym_depth)
 
-    # Pass 3c+: iteratively re-record callsites and re-union param types until no new
-    # param types are discovered (fixpoint). Each iteration propagates types one level
-    # deeper into nested call chains, so arbitrarily deep chains converge correctly.
-    prev_param_snapshot: dict = {}
-    while True:
-        snapshot = {
-            (fi.def_relpath, fi.def_key, pname): str(pt)
-            for fi in registry.functions.values()
-            for pname, pt in fi.callsite_param_types.items()
-            if pt != UNKNOWN
-        }
-        if snapshot == prev_param_snapshot:
-            break
-        prev_param_snapshot = snapshot
-        registry.callsite_records.clear()
-        for py_path, relpath in pairs:
-            infer_file(py_path, relpath, registry, all_entries[relpath], record_callsites=True)
-        apply_callsites(registry, all_entries, preserve_callsite_returns=True)
-
-    # Pass 3d: propagate the now-final param types into function body Name entries.
-    for py_path, relpath in track(pairs, description="Param propagation  "):
+    # Pass 3c: re-propagate callsite-inferred param types through function bodies
+    for py_path, relpath in track(pairs, description="Body propagation   "):
         infer_file(py_path, relpath, registry, all_entries[relpath], record_callsites=False)
-
-    for relpath in all_entries:
         out_paths[relpath].write_text(
             json.dumps(all_entries[relpath], indent="\t", ensure_ascii=False),
             encoding="utf-8",

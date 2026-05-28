@@ -45,7 +45,6 @@ Items are grouped by theme and roughly ordered by dependency. Tick them off as e
 ## Pass integration
 
 - [x] Update the `Call` entry in the **caller** file with the per-callsite return type (currently only `Function.callsites[site].type.usage` in the **callee** file is updated; the corresponding `Call` node in the caller's JSON should reflect the same value)
-- [x] Nested callee param back-propagation: re-record callsites after Pass 3c (with now-typed params) and re-union them in a new Pass 3d, so that functions called from typed contexts (e.g. `process(a, b)` inside `execute(a: int, b: str)`) get their param entries populated — uses `preserve_callsite_returns=True` to avoid clobbering symbolic return types
 - [ ] Per-callsite inner-variable propagation: for each specific callsite, propagate the context-sensitive types all the way to the variable entries inside the function body, not just the unioned result used by Pass 3c
 
 ---
