@@ -37,6 +37,8 @@ typify-backend infer <project_directory> <output_directory>
   - `config.json` — created on first run with default settings; edit to tune behaviour
   - `context-index/` — the downloaded retrieval index (auto-downloaded on first run if retrieval is enabled)
 
+![typify-backend infer](screenshots/infer.jpg)
+
 See [schema.md](schema.md) for the full output format. This output is intended to be consumed by the **Typify VS Code extension**.
 
 Subsequent runs on the same output directory are incremental — only files that changed since the last run are re-processed by the retrieval and Type4Py passes.
