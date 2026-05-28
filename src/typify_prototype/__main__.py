@@ -25,6 +25,7 @@ _DEFAULT_CONFIG = {
     "type4py": True,
     "type4py-api-url": "https://type4py.ali-aman.ca/api/predict?tc=0",
     "augment-context": False,
+    "propagation-passes": 3,
     "symbolic-depth": 3,
 }
 
@@ -277,7 +278,17 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     for py_path, relpath in track(pairs, description="Usage inference    "):
         infer_file(py_path, relpath, registry, all_entries[relpath])
 
-    # Pass 3b: callsite aggregation — writes callsites, unions param types
+    # Propagation passes: each iteration resolves one more level of depth in the call chain.
+    # Iteration i applies callsites from the previous infer pass, then re-infers so that
+    # newly-typed params propagate to their callees in the next iteration.
+    prop_passes = config.get("propagation-passes", _DEFAULT_CONFIG["propagation-passes"])
+    for _ in range(prop_passes):
+        apply_callsites(registry, all_entries)
+        registry.callsite_records.clear()
+        for py_path, relpath in pairs:
+            infer_file(py_path, relpath, registry, all_entries[relpath], record_callsites=True)
+
+    # Final callsite aggregation to capture types from the last propagation pass
     apply_callsites(registry, all_entries)
 
     # Pass 3b.5: per-callsite return type inference (with optional symbolic recursion)
@@ -285,7 +296,7 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     py_path_map = {relpath: py_path for py_path, relpath in pairs}
     infer_callsite_returns(py_path_map, registry, all_entries, sym_depth=sym_depth)
 
-    # Pass 3c: re-propagate callsite-inferred param types through function bodies
+    # Final body propagation: re-infer with all callsite-derived types and write outputs
     for py_path, relpath in track(pairs, description="Body propagation   "):
         infer_file(py_path, relpath, registry, all_entries[relpath], record_callsites=False)
         out_paths[relpath].write_text(
