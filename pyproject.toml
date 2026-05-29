@@ -3,8 +3,8 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "typify-backend"
-version = "0.1.0"
+name = "typify-cli"
+version = "0.1.5"
 description = "Backend CLI for the Typify inference engine"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-typify-backend = "typify_backend.__main__:main"
+typify = "typify_cli.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

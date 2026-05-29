@@ -1,4 +1,4 @@
-# typify-backend
+# typify-cli
 
 Backend CLI for **Typify**, a lightweight usage-driven static analyzer for precise Python type inference. Published at the *34th IEEE/ACM International Conference on Program Comprehension (ICPC 2026)*, Rio de Janeiro, Brazil.
 
@@ -19,7 +19,7 @@ This works through several stages run in order:
 ## Installation
 
 ```
-pip install typify-backend
+pip install typify-cli
 ```
 
 ## Usage
@@ -27,7 +27,7 @@ pip install typify-backend
 ### Inference
 
 ```
-typify-backend infer <project_directory> <output_directory>
+typify infer <project_directory> <output_directory>
 ```
 
 - `project_directory` — root of the Python project to analyze. Typify recursively finds all `.py` files within it.
@@ -37,7 +37,7 @@ typify-backend infer <project_directory> <output_directory>
   - `config.json` — created on first run with default settings; edit to tune behaviour
   - `context-index/` — the downloaded retrieval index (auto-downloaded on first run if retrieval is enabled)
 
-![typify-backend infer](screenshots/infer.jpg)
+![typify-cli infer](screenshots/infer.jpg)
 
 See [schema.md](schema.md) for the full output format. This output is intended to be consumed by the **Typify VS Code extension**.
 
@@ -78,7 +78,7 @@ For more details on the symbolic execution technique and how these parameters af
 The `build` command lets researchers build their own retrieval index from any annotated Python dataset (e.g. ManyTypes4Py, Typilus, or a private codebase):
 
 ```
-typify-backend build <dataset_root> <index_directory> [--workers N]
+typify build <dataset_root> <index_directory> [--workers N]
 ```
 
 - `dataset_root` — root of an annotated Python dataset (e.g. ManyTypes4Py, Typilus, or any collection of `.py` files with type annotations). Typify recursively walks the tree extracting all annotated type slots and their surrounding context.
