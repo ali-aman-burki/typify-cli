@@ -188,7 +188,11 @@ def _cmd_infer(args: argparse.Namespace) -> None:
     if not input_dir.is_dir():
         sys.exit(f"Error: '{input_dir}' is not a directory.")
 
-    py_files = sorted(input_dir.glob("**/*.py"))
+    _SKIP_DIRS = {".venv", "venv", ".env", "__pypackages__", "site-packages"}
+    py_files = sorted(
+        p for p in input_dir.glob("**/*.py")
+        if not any(part in _SKIP_DIRS for part in p.relative_to(input_dir).parts)
+    )
     if not py_files:
         return
     output_dir.mkdir(parents=True, exist_ok=True)
