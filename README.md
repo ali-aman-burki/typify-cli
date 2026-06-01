@@ -1,51 +1,76 @@
 # typify-cli
 
-Backend CLI for **Typify**, a lightweight usage-driven static analyzer for precise Python type inference. Published at the *34th IEEE/ACM International Conference on Program Comprehension (ICPC 2026)*, Rio de Janeiro, Brazil.
-
-Typify infers types for variables, function parameters, and return values in unannotated Python codebases — no training data or existing annotations required.
-
-## How it works
-
-Typify's core contribution is **usage-driven inference**: rather than treating each function in isolation, Typify looks at how a function is actually called across the project and propagates the concrete argument types back to the function's parameters. For example, if `process(items)` is called with a `list[str]`, Typify infers that the `items` parameter is `list[str]` and carries that type into the function body to resolve further expressions.
-
-This works through several stages run in order:
-
-1. **Dependency graph construction** — Typify scans all modules and builds a project-wide import graph, determining the order in which modules should be analyzed (topological order, with fixpoint iteration for circular imports).
-2. **Usage-driven inference** — The engine traverses each module statement by statement, inferring types from assignments, method calls, and operators. Types accumulate monotonically (e.g. `x = []` → `list`, then `x.append(1)` → `list[int]`).
-3. **Propagation passes** — Multiple rounds of call-site application and re-inference allow types to propagate through chains of function calls, resolving one additional level of depth per pass.
-4. **Context-matching retrieval** — For slots that remain unresolved after usage-driven inference (e.g. uncalled functions), Typify queries a pre-built search index of annotated code to suggest candidate types based on local context similarity.
-5. **Type4Py integration** — Optionally queries the Type4Py API to fill remaining gaps with deep-learning predictions.
+`typify-cli` is the standalone inference engine and CLI used by the VS Code extension. It can also be used independently for research, experimentation, batch analysis, and integration into downstream tools.
 
 ## Installation
 
-```
+Requires **Python 3.11 or higher**.
+
+```bash
 pip install typify-cli
 ```
+
+### Dependencies
+
+The following packages are installed automatically by the above command: `tantivy`, `rich`, `gdown`, and `requests`.
+
+---
+
+## How Typify Works
+
+The analysis pipeline consists of several stages:
+
+1. **Dependency graph construction** - builds a project-wide import graph and handles circular imports through fixpoint iteration.
+
+2. **Usage-driven inference** - infers types from assignments, operators, method calls, and usage patterns. Types accumulate monotonically over time.
+
+3. **Propagation passes** - re-applies inferred call-site information across multiple rounds, resolving increasingly deep call chains.
+
+4. **Context-matching retrieval** - queries a search index of annotated Python code for unresolved slots.
+
+5. **Type4Py integration** - uses neural predictions for remaining unresolved cases.
+
+---
 
 ## Usage
 
 ### Inference
 
+```bash
+Usage: typify infer [PROJECT-PATH] [OUTPUT-PATH] [OPTIONS]
+
+Arguments:
+  PROJECT-PATH    Path to the project directory
+  OUTPUT-PATH     Output directory to write inferred types into
+
+Options:
+  --config PATH   Path to a config file to configure inference
 ```
-typify infer <project_directory> <output_directory>
+
+### Output Structure
+
+The output directory contains:
+
+```text
+types/           # JSON type outputs per file
+index.json       # Source-to-output mapping
+config.json      # Analyzer configuration
+context-index/   # Retrieval index
 ```
 
-- `project_directory` — root of the Python project to analyze. Typify recursively finds all `.py` files within it.
-- `output_directory` — where results are written. Contains:
-  - `types/` — one JSON file per source file with inferred types for every resolved identifier
-  - `index.json` — maps each source path (relative to `project_directory`) to its output JSON file
-  - `config.json` — created on first run with default settings; edit to tune behaviour
-  - `context-index/` — the downloaded retrieval index (auto-downloaded on first run if retrieval is enabled)
+<img src="media/screenshots/cli.webp" alt="typify-cli infer">
 
-![typify-cli infer](screenshots/infer.jpg)
+The generated output is designed to be consumed directly by the Typify VS Code extension.
 
-See [schema.md](schema.md) for the full output format. This output is intended to be consumed by the **Typify VS Code extension**.
+Subsequent runs are incremental: only changed files are reprocessed by retrieval and Type4Py passes.
 
-Subsequent runs on the same output directory are incremental — only files that changed since the last run are re-processed by the retrieval and Type4Py passes.
+See [schema.md](schema.md) for the full output format.
 
-### Configuration
+---
 
-On first run, a `config.json` is written to the output directory with all defaults. Edit it to tune behaviour:
+## Configuration
+
+On first run, Typify writes a default `config.json`:
 
 ```json
 {
@@ -60,33 +85,91 @@ On first run, a `config.json` is written to the output directory with all defaul
 }
 ```
 
-| Field | Description |
-|---|---|
-| `context-retrieval` | Enable the context-matching retrieval pass. If enabled and no index exists locally, it is downloaded automatically. |
-| `context-index-download` | URL to download the pre-built retrieval index from. Override this to point to your own index. |
-| `retrieval-top-k` | Number of candidate types retrieved per slot; the top result is used. |
-| `type4py` | Enable the Type4Py deep-learning pass for slots still unresolved after retrieval. |
-| `type4py-api-url` | Type4Py API endpoint. Can be changed to a self-hosted instance. |
-| `augment-context` | **Experimental.** When enabled, augments the retrieval query context with type annotations already present in the user's own codebase, improving retrieval for project-specific types. Under active development. |
-| `propagation-passes` | Number of call-site propagation rounds. More passes resolve longer call chains but take longer. |
-| `symbolic-depth` | Maximum recursion depth during per-callsite symbolic execution of return types. |
+| Field                    | Description                         |
+| ------------------------ | ----------------------------------- |
+| `context-retrieval`      | Enable retrieval-based inference    |
+| `context-index-download` | Retrieval index download URL        |
+| `retrieval-top-k`        | Number of retrieved candidates      |
+| `type4py`                | Enable Type4Py integration          |
+| `type4py-api-url`        | Type4Py API endpoint                |
+| `augment-context`        | Experimental retrieval augmentation |
+| `propagation-passes`     | Number of propagation rounds        |
+| `symbolic-depth`         | Symbolic execution recursion depth  |
 
-For more details on the symbolic execution technique and how these parameters affect inference, refer to the [ICPC 2026 paper](https://doi.org/10.1145/3794763.3794825).
+For more details, refer to the [ICPC 2026 paper](https://doi.org/10.1145/3794763.3794825).
 
-### Building a custom retrieval index
+---
 
-The `build` command lets researchers build their own retrieval index from any annotated Python dataset (e.g. ManyTypes4Py, Typilus, or a private codebase):
+## Building a Custom Retrieval Index
 
+Researchers can build their own retrieval indexes using:
+
+```bash
+Usage: typify build [DATASET-PATH] [INDEX-PATH] [OPTIONS]
+
+Arguments:
+  DATASET-PATH    Path to the dataset directory
+  INDEX-PATH      Output directory to write the retrieval index into
+
+Options:
+  --workers N     Number of parallel workers to use during index construction
 ```
-typify build <dataset_root> <index_directory> [--workers N]
+
+Supported datasets include:
+
+- ManyTypes4Py
+- Typilus
+- Any annotated Python corpus
+
+This enables experimentation with domain-specific retrieval corpora.
+
+---
+
+## Batch Inference and Evaluation
+
+For large-scale analysis across entire datasets, such as benchmarking Typify against a corpus of Python projects, `typify-cli` provides three commands that together form an end-to-end evaluation pipeline: ground-truth extraction, batch inference, and result comparison.
+
+### `typify gt` - Ground-Truth Extraction
+
+Extracts type annotations from an already-annotated dataset, producing a JSON file that serves as the reference ground truth for evaluation. Run this first on any dataset that contains existing annotations.
+
+```bash
+Usage: typify gt [DATASET-PATH] [OUTPUT-PATH]
+
+Arguments:
+  DATASET-PATH    Path to the dataset directory
+  OUTPUT-PATH     Output JSON file to write extracted annotations into
 ```
 
-- `dataset_root` — root of an annotated Python dataset (e.g. ManyTypes4Py, Typilus, or any collection of `.py` files with type annotations). Typify recursively walks the tree extracting all annotated type slots and their surrounding context.
-- `index_directory` — where the Tantivy search index is written. Point `context-index-download` in `config.json` to this path (or host it and update the URL) to use it during inference.
-- `--workers N` — number of parallel worker processes for indexing (default: 4).
+---
 
-This makes it straightforward to experiment with domain-specific or larger corpora to improve retrieval coverage in specialized settings.
+### `typify dataset` - Batch Inference
 
-## Replication
+Runs Typify's inference engine over an entire dataset directory, processing each project and writing predicted types to a JSON output file.
 
-The replication package for the ICPC 2026 paper is available at [https://github.com/ali-aman-burki/typify](https://github.com/ali-aman-burki/typify). It contains everything needed to reproduce the empirical results from the paper, including scripts for batch processing large datasets (ManyTypes4Py and Typilus), the full experimental evaluation pipeline, baseline comparisons, and result analysis. Researchers looking to reproduce or extend the evaluation should refer to that repository rather than this CLI.
+```bash
+Usage: typify dataset [DATASET-PATH] [OUTPUT-PATH] [OPTIONS]
+
+Arguments:
+  DATASET-PATH    Path to the dataset directory
+  OUTPUT-PATH     Output JSON file for inferred type predictions
+
+Options:
+  --config PATH   Path to a config file to configure inference
+```
+
+---
+
+### `typify eval` - Evaluation
+
+Compares Typify's predictions against the ground truth produced by `typify gt`, reporting accuracy using both exact-match and base-type matching.
+
+```bash
+Usage: typify eval [GT-PATH] [TOOL-PATH]
+
+Arguments:
+  GT-PATH      Ground-truth JSON file produced by typify gt
+  TOOL-PATH    Inference output JSON file produced by typify dataset
+```
+
+---
