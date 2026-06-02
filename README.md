@@ -1,6 +1,89 @@
-# typify-cli
+# Typify
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![API Status](https://img.shields.io/endpoint?url=https://type4py.ali-aman.ca/health&style=flat)
 
-`typify-cli` is the standalone inference engine and CLI used by the VS Code extension. It can also be used independently for research, experimentation, batch analysis, and integration into downstream tools.
+**Typify** is a usage-driven Python type inference system that automatically infers types for unannotated Python codebases.
+
+---
+
+## Motivation
+
+Python is one of the most widely used programming languages in the world, yet the vast majority of real-world Python code remains unannotated. Studies show that fewer than 10% of annotatable code elements carry explicit type annotations. This creates real problems for developers: without type information, IDEs cannot offer reliable autocompletion, refactoring tools operate blindly, and entire classes of bugs go undetected until runtime.
+
+| Without annotations | With annotations |
+|---|---|
+| ![Unannotated function](screenshots/noannotate4.png) | ![Annotated function in IDE](screenshots/annotated4.png) |
+
+Adding annotations manually is tedious and error-prone, especially in large or legacy codebases. The goal of Typify is to automate this process, recovering precise type information across an entire project without requiring developers to write a single annotation by hand.
+
+---
+
+## Approach
+
+Typify is a purely static type inference engine. It builds a dependency graph of the entire project, schedules modules in topological order, and propagates type information across functions, classes, and module boundaries using iterative fixpoint analysis.
+
+<div style="text-align: center;">
+  <img
+    src="screenshots/typifypipeline.png"
+    alt="typify-pipeline"
+    width="400"
+  />
+</div>
+
+The core insight is **usage-driven inference**: types are inferred not from declarations, but from how variables and functions are actually used throughout the codebase.
+
+### Example
+
+Consider a function with no annotations:
+
+```python
+def add(x, y):
+    return x + y
+```
+
+Somewhere else in the project, it is called like this:
+
+```python
+add(10, "hello")
+```
+
+Existing tools treat each function in isolation and cannot infer anything about `x` or `y` without explicit annotations. Typify traces the call site, observes that `10` is an `int` and `"hello"` is a `str`, and propagates these types back to the parameters, inferring `x: int` and `y: str` without any annotations.
+
+This call-site propagation works recursively and cross-module, meaning types flow naturally through the entire project as Typify analyzes it.
+
+Unlike local-only inference tools, Typify uses a **whole-project usage-driven analysis**. It tracks how values flow across files and function calls, allowing it to infer precise types such as:
+
+```python
+list[dict[str, list[str]]]
+```
+
+instead of broad approximations like `list` or `Any`.
+
+---
+
+## Evaluation
+
+Typify was evaluated on two benchmark datasets, **ManyTypes4Py** and **Typilus**, against static checkers (Pyright, Pyre Infer), a deep learning model (Type4Py), and the state-of-the-art hybrid system (HiTyper).
+
+Key findings:
+
+- Typify substantially outperforms all static checkers, with exact-match accuracy up to **55.9%** overall on ManyTypes4Py vs. Pyre Infer's **10.4%**.
+- Typify closely trails HiTyper despite using no machine learning, running at **4.7 ms per data point** vs. HiTyper's **48.2 ms**, a 90% reduction in latency.
+- When combined with Type4Py, Typify **outperforms HiTyper** across nearly all tasks and datasets.
+
+### Feature Comparison
+
+| Tool | No annotations needed | Usage-driven inference | Cross-module / whole-project | Deterministic & reproducible | ML-based predictions |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Pyright | ✕ | ✕ | ✓ | ✓ | ✕ |
+| Pyre | ✕ | ✕ | ✕ | ✓ | ✕ |
+| Type4Py | ✓ | ✕ | ✕ | ✕ | ✓ |
+| HiTyper | ✓ | ✕ | ✕ | ✓ | ✓ |
+| **Typify** | **✓** | **✓** | **✓** | **✓** | **✓** |
+
+As shown above, Typify stands out because it combines analysis of the entire project with predictable execution, while also supporting optional ML features. Unlike many existing tools, it does not focus on just one strength at the expense of others.
+
+---
 
 ## Installation
 
@@ -13,6 +96,25 @@ pip install typify-cli
 ### Dependencies
 
 The following packages are installed automatically by the above command: `tantivy`, `rich`, `gdown`, and `requests`.
+
+### Example Project
+
+A sample Python project is available for download to experiment with Typify right away.
+
+[Download example project](/content/typify/library-project.zip)
+
+Extract the archive, navigate to the project root, set up a Python virtual environment, install the project dependencies, then install `typify-cli`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+pip install typify-cli
+```
+
+The demo video below walks through this setup and runs Typify on the example project.
+
+[![Watch the demo](https://img.youtube.com/vi/ANkhv1dci3s/0.jpg)](https://youtu.be/ANkhv1dci3s)
 
 ---
 
@@ -58,9 +160,7 @@ config.json      # Analyzer configuration
 context-index/   # Retrieval index
 ```
 
-<img src="media/screenshots/cli.webp" alt="typify-cli infer">
-
-The generated output is designed to be consumed directly by the Typify VS Code extension.
+<img src="screenshots/cli.webp" alt="typify-cli infer">
 
 Subsequent runs are incremental: only changed files are reprocessed by retrieval and Type4Py passes.
 
@@ -96,7 +196,7 @@ On first run, Typify writes a default `config.json`:
 | `propagation-passes`     | Number of propagation rounds        |
 | `symbolic-depth`         | Symbolic execution recursion depth  |
 
-For more details, refer to the [ICPC 2026 paper](https://doi.org/10.1145/3794763.3794825).
+For more details, refer to the links at the bottom of the page.
 
 ---
 
@@ -173,3 +273,16 @@ Arguments:
 ```
 
 ---
+
+# Links
+
+- [Typify CLI Repository](https://github.com/ali-aman-burki/typify-cli)
+- [VS Code Extension Repository](https://github.com/for-loop9/typify-vscode)
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=amanh.typify)
+- [Type4Py](https://github.com/saltudelft/type4py)
+- [ICPC 2026 Paper](https://doi.org/10.1145/3794763.3794825)
+
+---
+The full technical paper containing the technique description and evaluation results was published at the *34th IEEE/ACM International Conference on Program Comprehension (ICPC 2026)*, Rio de Janeiro, Brazil.
+
+*Typify is a research project from the University of Windsor, supported by the Natural Sciences and Engineering Research Council of Canada (NSERC).*
