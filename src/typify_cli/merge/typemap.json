@@ -1,0 +1,33 @@
+{
+  "default_guess": "str",
+  "priority_type_strs": [
+    "builtins.str",
+    "builtins.int",
+    "builtins.bool",
+    "logging.Logger",
+    "builtins.float"
+  ],
+  "builtin_call_guess": {
+    "int": "int",
+    "float": "float",
+    "complex": "complex",
+    "str": "str",
+    "bytes": "bytes",
+    "bool": "bool",
+    "list": "list",
+    "tuple": "tuple",
+    "set": "set",
+    "dict": "dict",
+    "bytearray": "bytearray",
+    "memoryview": "memoryview",
+    "range": "range"
+  },
+  "int_tokens": ["num", "count", "size", "len", "idx", "index", "step", "port", "age", "year", "day", "slot", "slots"],
+  "float_tokens": ["ratio", "score", "prob", "pct", "percent", "lat", "lng", "lon"],
+  "bool_prefixes": ["is_", "has_", "can_", "should_", "use_", "enable_", "disable_", "flag_"],
+  "str_tokens": ["path", "file", "dir", "name", "title", "msg", "text", "str", "key", "token", "id", "slug", "url", "uri", "email"],
+  "bytes_tokens": ["bytes", "buf", "blob", "payload"],
+  "list_tokens": ["items", "values", "lines", "rows", "cols", "list", "array", "queue", "stack", "history", "results"],
+  "set_tokens": ["set", "unique"],
+  "dict_tokens": ["map", "dict", "table", "lookup", "registry", "headers"]
+}

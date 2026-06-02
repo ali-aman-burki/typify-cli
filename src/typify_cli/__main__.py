@@ -17,6 +17,7 @@ from .retrieval.build import build_index
 from .retrieval.query import TypeRetriever
 from .retrieval.retrieve_file import retrieve_file
 from .type4py.infer_file import infer_file as type4py_infer_file
+from .merge import run_infer, run_gt, run_eval, stubs_dir
 
 _DEFAULT_CONFIG = {
     "context-retrieval": True,
@@ -356,24 +357,149 @@ def _cmd_build(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_project(args: argparse.Namespace) -> None:
+    sys.setrecursionlimit(5000)
+    run_infer.infer_project(
+        project_dir=args.project_dir,
+        output_types=args.output_types,
+        output_log=args.output_log,
+        log_level=args.log_level,
+        clear_cache=args.clear_cache,
+        prune_cache=args.prune_cache,
+        cache=args.cache,
+        heur=args.heur,
+        usage=args.usage,
+        topn=args.topn,
+        cache_dir=args.cache_dir,
+        paths=args.paths,
+    )
+
+
+def _cmd_repo(args: argparse.Namespace) -> None:
+    sys.setrecursionlimit(5000)
+    run_infer.infer_repo(
+        repo_dir=args.repo_dir,
+        output_types=args.output_types,
+        output_log=args.output_log,
+        log_level=args.log_level,
+        clear_cache=args.clear_cache,
+        prune_cache=args.prune_cache,
+        cache=args.cache,
+        heur=args.heur,
+        usage=args.usage,
+        topn=args.topn,
+        cache_dir=args.cache_dir,
+        paths=args.paths,
+        utime=args.utime,
+    )
+
+
+def _cmd_dataset(args: argparse.Namespace) -> None:
+    sys.setrecursionlimit(5000)
+    run_infer.infer_dataset(
+        dataset_dir=args.dataset_dir,
+        output_types=args.output_types,
+        output_log=args.output_log,
+        log_level=args.log_level,
+        clear_cache=args.clear_cache,
+        prune_cache=args.prune_cache,
+        cache=args.cache,
+        heur=args.heur,
+        usage=args.usage,
+        topn=args.topn,
+        cache_dir=args.cache_dir,
+        paths=args.paths,
+        utime=args.utime,
+    )
+
+
+def _cmd_gt(args: argparse.Namespace) -> None:
+    run_gt.extract_type_annotations(
+        projects_root=args.dataset,
+        output_json_path=args.output_types,
+        merge_buckets=True,
+        paths_txt=args.paths_txt,
+    )
+
+
+def _cmd_eval(args: argparse.Namespace) -> None:
+    run_eval.eval(
+        gt_path=args.gt_path,
+        tool_path=args.tool_path,
+        topn=args.topn,
+    )
+
+
+def _add_common_infer_args(parser: argparse.ArgumentParser) -> None:
+    """Add the shared inference options to a subparser."""
+    parser.add_argument("--output-types", default=None)
+    parser.add_argument("--output-log", default=None)
+    parser.add_argument("--log-level", default="off",
+                        choices=["off", "info", "debug", "trace", "error", "warning"])
+    parser.add_argument("--clear-cache", action="store_true")
+    parser.add_argument("--prune-cache", action="store_true")
+    parser.add_argument("--cache", action="store_true")
+    parser.add_argument("--heur", action="store_true")
+    parser.add_argument("--usage", action="store_true")
+    parser.add_argument("--topn", type=int, default=1)
+    parser.add_argument("--cache-dir", default="{auto}")
+    parser.add_argument("--paths", nargs="*", default=[f"{stubs_dir}/stdlib/"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # --- existing project commands ---
     infer_parser = subparsers.add_parser("infer")
     infer_parser.add_argument("input_dir", type=Path)
     infer_parser.add_argument("output_dir", type=Path)
 
-    build_parser = subparsers.add_parser("build", help="Build Tantivy index from a dataset")
+    build_parser = subparsers.add_parser("build")
     build_parser.add_argument("dataset_root", type=Path)
     build_parser.add_argument("index", type=Path)
     build_parser.add_argument("--workers", type=int, default=4)
+
+    # --- old project commands ---
+    project_parser = subparsers.add_parser("project")
+    project_parser.add_argument("project_dir")
+    _add_common_infer_args(project_parser)
+
+    repo_parser = subparsers.add_parser("repo")
+    repo_parser.add_argument("repo_dir")
+    repo_parser.add_argument("--utime", type=int, default=80)
+    _add_common_infer_args(repo_parser)
+
+    dataset_parser = subparsers.add_parser("dataset")
+    dataset_parser.add_argument("dataset_dir")
+    dataset_parser.add_argument("--utime", type=int, default=80)
+    _add_common_infer_args(dataset_parser)
+
+    gt_parser = subparsers.add_parser("gt")
+    gt_parser.add_argument("dataset")
+    gt_parser.add_argument("--output-types", default=None)
+    gt_parser.add_argument("--paths-txt", default=None)
+
+    eval_parser = subparsers.add_parser("eval")
+    eval_parser.add_argument("gt_path")
+    eval_parser.add_argument("tool_path")
+    eval_parser.add_argument("--topn", type=int, default=1)
 
     args = parser.parse_args()
     if args.command == "infer":
         _cmd_infer(args)
     elif args.command == "build":
         _cmd_build(args)
+    elif args.command == "project":
+        _cmd_project(args)
+    elif args.command == "repo":
+        _cmd_repo(args)
+    elif args.command == "dataset":
+        _cmd_dataset(args)
+    elif args.command == "gt":
+        _cmd_gt(args)
+    elif args.command == "eval":
+        _cmd_eval(args)
 
 
 if __name__ == "__main__":
