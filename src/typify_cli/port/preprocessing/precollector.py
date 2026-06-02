@@ -455,7 +455,7 @@ class PreCollector(ast.NodeVisitor):
 			self._imported_names[export] = alias.name
 
 	def visit_AnnAssign(self, node: ast.AnnAssign):
-		from typify.preprocessing.instance_utils import ReferenceSet, VSlot
+		from ..preprocessing.instance_utils import ReferenceSet, VSlot
 		fqn = self._format_fqn()
 		position = (node.target.lineno, node.target.col_offset)
 
@@ -486,7 +486,7 @@ class PreCollector(ast.NodeVisitor):
 			self._assign_target_env(node.target, parse_typeexpr(h_type[0]))
 
 	def visit_AugAssign(self, node: ast.AugAssign):
-		from typify.preprocessing.instance_utils import ReferenceSet, VSlot
+		from ..preprocessing.instance_utils import ReferenceSet, VSlot
 		fqn = self._format_fqn()
 		position = (node.target.lineno, node.target.col_offset)
 
@@ -514,7 +514,7 @@ class PreCollector(ast.NodeVisitor):
 			self._assign_target_env(node.target, parse_typeexpr(h_type[0]))
 
 	def visit_Assign(self, node: ast.Assign):
-		from typify.preprocessing.instance_utils import ReferenceSet, VSlot
+		from ..preprocessing.instance_utils import ReferenceSet, VSlot
 		fqn = self._format_fqn()
 		env = self._local_env_stack[-1] if (self.in_function and self._local_env_stack) else None
 
@@ -571,7 +571,7 @@ class PreCollector(ast.NodeVisitor):
 		self._class_stack.pop()
 
 	def visit_FunctionDef(self, node: ast.FunctionDef):
-		from typify.preprocessing.instance_utils import ReferenceSet, FSlot
+		from ..preprocessing.instance_utils import ReferenceSet, FSlot
 		fqn = self._format_fqn()
 		scope = fqn
 		position = (node.lineno, node.col_offset)

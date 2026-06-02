@@ -51,7 +51,7 @@ class Executor(ast.NodeVisitor):
 		tree: ast.AST,
 		deferred_annotations: DeferredAnnotations = None,
 	):
-		from typify.inferencing.generics.utils import GenericUtils
+		from ..inferencing.generics.utils import GenericUtils
 
 		self.module_meta = module_meta
 		self.symbol = symbol
@@ -129,7 +129,7 @@ class Executor(ast.NodeVisitor):
 			self.concsubs = fobject.concsubs = enclosing_concsubs | fobject.concsubs
 	
 	def execute(self) -> ReferenceSet: 
-		from typify.inferencing.generics.utils import GenericUtils
+		from ..inferencing.generics.utils import GenericUtils
 		
 		fobject = GlobalContext.function_object_map.get(self.symbol)
 
@@ -284,7 +284,7 @@ class Executor(ast.NodeVisitor):
 	#TODO: add support for multiple possible candidates for a single base
 	@safeguard(lambda: None, "visit_ClassDef")
 	def visit_ClassDef(self, class_tree: ast.ClassDef):
-		from typify.inferencing.generics.utils import GenericUtils
+		from ..inferencing.generics.utils import GenericUtils
 
 		name = class_tree.name
 		position = (class_tree.lineno, class_tree.col_offset)
@@ -370,8 +370,8 @@ class Executor(ast.NodeVisitor):
 
 	# @safeguard(lambda: None, "visit_FunctionDef")
 	def visit_FunctionDef(self, func_tree: Union[ast.FunctionDef, ast.AsyncFunctionDef]):
-		from typify.preprocessing.instance_utils import FSlot
-		from typify.preprocessing.precollector import PreCollector
+		from ..preprocessing.instance_utils import FSlot
+		from ..preprocessing.precollector import PreCollector
 		
 		position = (func_tree.lineno, func_tree.col_offset)
 		defkey = (self.module_meta.table, position)
@@ -453,7 +453,7 @@ class Executor(ast.NodeVisitor):
 		self.resolver.resolve_value(node)
 
 	def visit_Assign(self, node):
-		from typify.preprocessing.precollector import PreCollector
+		from ..preprocessing.precollector import PreCollector
 
 		value_expr = node.value
 		for tgt in node.targets:
@@ -472,7 +472,7 @@ class Executor(ast.NodeVisitor):
 		self.deferred_annotations.compute(self.resolver)
 
 	def visit_AnnAssign(self, node):
-		from typify.inferencing.generics.utils import GenericUtils
+		from ..inferencing.generics.utils import GenericUtils
 
 		resolved_value = self.resolver.resolve_value(node.value)
 		arefset = self.resolver.resolve_value(node.annotation)
@@ -514,8 +514,8 @@ class Executor(ast.NodeVisitor):
 		self.deferred_annotations.compute(self.resolver)
 	
 	def visit_AugAssign(self, node):
-		from typify.inferencing.desugar import Desugar
-		from typify.inferencing.call_dispatcher import CallDispatcher
+		from ..inferencing.desugar import Desugar
+		from ..inferencing.call_dispatcher import CallDispatcher
 
 		position = (node.target.lineno, node.target.col_offset)
 

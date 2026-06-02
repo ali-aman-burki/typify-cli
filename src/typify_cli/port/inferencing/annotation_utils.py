@@ -49,7 +49,7 @@ class AnnotationUtils:
 		node: ast.Expr, 
 		obj: Union[Union[Union[Instance, PackedExpr], ParameterEntry], Varnotation],
 	):
-		from typify.inferencing.commons import Builtins
+		from ..inferencing.commons import Builtins
 
 		string = ""
 		if deferred_annotations.on:

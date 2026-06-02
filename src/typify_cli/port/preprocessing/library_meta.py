@@ -29,7 +29,7 @@ class LibraryMeta:
 		self.path_index: dict[Path, ModuleMeta] = {}
 
 	def build(self, progress_bar: IndeterminateProgressBar):
-		from typify.utils.caching import GlobalCache
+		from ..utils.caching import GlobalCache
 		
 		working_is_package = (self.src / "__init__.py").is_file() or (self.src / "__init__.pyi").is_file()
 

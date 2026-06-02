@@ -66,7 +66,7 @@ class TypeExpr:
 		return TypeExpr(self.base, new_args)
 	
 	def remove_args(self) -> TypeExpr:
-		from typify.inferencing.typeutils import TypeUtils
+		from ..inferencing.typeutils import TypeUtils
 		if Checker.match_origin(self.base, Typing.get_type("Union")):
 			new_args = [arg.remove_args() for arg in self.args]
 			return TypeUtils.unify_from_exprs([TypeExpr(self.base, new_args)])
@@ -120,7 +120,7 @@ class AliasParser:
 
 	@staticmethod
 	def filter_concsubs(concsubs: dict):
-		from typify.inferencing.generics.model import Placeholder
+		from ..inferencing.generics.model import Placeholder
 
 		concsubs: dict[Placeholder, Union[TypeExpr, list[TypeExpr]]] = concsubs
 
@@ -145,7 +145,7 @@ class AliasParser:
 		concsubs: dict
 	) -> TypeExpr:
 		
-		from typify.inferencing.generics.model import Placeholder
+		from ..inferencing.generics.model import Placeholder
 		
 		concsubs: dict[Placeholder, Union[TypeExpr, list[TypeExpr]]] = AliasParser.filter_concsubs(concsubs)
 		if Checker.is_alias(annotation):
@@ -168,7 +168,7 @@ class AliasParser:
 		concsubs: dict
 	) -> Union[TypeExpr, list[TypeExpr]]:
 		
-		from typify.inferencing.generics.model import Placeholder
+		from ..inferencing.generics.model import Placeholder
 		
 		concsubs: dict[Placeholder, Union[TypeExpr, list[TypeExpr]]] = concsubs
 		if packed_expr.base.instanceof(Typing.get_type("_UnpackGenericAlias")):
@@ -206,7 +206,7 @@ class AliasParser:
 	#TODO: may need to later uncomment. so far no evidence of incorrect output if not uncommented
 	@staticmethod
 	def get_packed_expr(resolver, elt: ast.Expr):
-		from typify.inferencing.resolver import Resolver
+		from ..inferencing.resolver import Resolver
 
 		resolver: Resolver = resolver
 		relt = resolver.resolve_value(elt)
@@ -225,7 +225,7 @@ class AliasParser:
 		base_inst: Instance,
 		genref: Instance, 
 	) -> ReferenceSet:
-		from typify.inferencing.resolver import Resolver
+		from ..inferencing.resolver import Resolver
 
 		resolver: Resolver = resolver
 		

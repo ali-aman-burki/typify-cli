@@ -30,7 +30,7 @@ class _LocationHolder:
 
 class _ReferenceHolder:
 	def __init__(self):
-		from typify.preprocessing.instance_utils import ReferenceSet
+		from ..preprocessing.instance_utils import ReferenceSet
 
 		super().__init__()
 		self.refset: ReferenceSet = ReferenceSet()
@@ -192,8 +192,8 @@ class Module(
 
 class ClassDefinition(_LocatableSymbol): 
 	def __init__(self, defkey: tuple[Module, tuple[int, int]]):
-		from typify.preprocessing.instance_utils import Instance
-		from typify.inferencing.generics.model import GenericConstruct
+		from ..preprocessing.instance_utils import Instance
+		from ..inferencing.generics.model import GenericConstruct
 
 		super().__init__(defkey)
 		self.bases: list[Instance] = []
@@ -324,7 +324,7 @@ class Name(Symbol):
 		return self.definitions[key]
 	
 	def get_plausible_refset(self):
-		from typify.preprocessing.instance_utils import ReferenceSet
+		from ..preprocessing.instance_utils import ReferenceSet
 
 		result = ReferenceSet()
 		for definition in self.definitions.values():

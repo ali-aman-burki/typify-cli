@@ -52,8 +52,8 @@ class Singletons:
 
 	@staticmethod
 	def get(singname: str):
-		from typify.preprocessing.core import GlobalContext
-		from typify.inferencing.typeutils import TypeUtils
+		from ..preprocessing.core import GlobalContext
+		from ..inferencing.typeutils import TypeUtils
 
 		if singname not in GlobalContext.singletons: return None
 
@@ -121,7 +121,7 @@ class Builtins:
 
 	@staticmethod
 	def module() -> Module:
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 		try:
 			result = GlobalContext.inference["builtins"].table
 			return result
@@ -140,7 +140,7 @@ class Typing:
 	
 	@staticmethod
 	def module() -> Module:
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 		try:
 			result = GlobalContext.inference["typing"].table
 			return result
@@ -159,7 +159,7 @@ class Types:
 	
 	@staticmethod
 	def module() -> Module:
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 		try:
 			result = GlobalContext.inference["types"].table
 			return result
@@ -178,7 +178,7 @@ class Future:
 
 	@staticmethod
 	def module() -> Module:
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 		try:
 			result = GlobalContext.inference["__future__"].table
 			return result
@@ -197,7 +197,7 @@ class CollectionsAbc:
 
 	@staticmethod
 	def module() -> Module:
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 		try:
 			result = GlobalContext.inference["collections.abc"].table
 			return result

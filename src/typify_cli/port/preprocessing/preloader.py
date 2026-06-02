@@ -55,7 +55,7 @@ print(json.dumps(info))
 		config: dict[str, Union[str, list[str], dict[str, str]]], 
 		project_dir: Path
 	):
-		from typify.utils.logging import logger
+		from ..utils.logging import logger
 
 		paths = [project_dir]
 		inference: dict[str, Path] = {}

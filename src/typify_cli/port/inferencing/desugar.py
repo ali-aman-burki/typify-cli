@@ -130,11 +130,11 @@ class Desugar:
 
 	@staticmethod
 	def resolve(node: ast.expr, resolver: Resolver):
-		from typify.preprocessing.instance_utils import ReferenceSet
-		from typify.inferencing.typeutils import TypeUtils
-		from typify.inferencing.expression import AliasParser, TypeExpr, PackedExpr
-		from typify.inferencing.commons import Checker, Typing, Types
-		from typify.inferencing.call_dispatcher import CallDispatcher
+		from ..preprocessing.instance_utils import ReferenceSet
+		from ..inferencing.typeutils import TypeUtils
+		from ..inferencing.expression import AliasParser, TypeExpr, PackedExpr
+		from ..inferencing.commons import Checker, Typing, Types
+		from ..inferencing.call_dispatcher import CallDispatcher
 
 		if isinstance(node, ast.Subscript):
 			baseset = resolver.resolve_value(node.value)

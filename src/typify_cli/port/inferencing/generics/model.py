@@ -37,7 +37,7 @@ class Placeholder:
 		concsubs: dict[Placeholder, Union[TypeExpr, list[TypeExpr]]],
 		incoming: Union[TypeExpr, list[TypeExpr]]
 	) -> Union[TypeExpr, list[TypeExpr]]:
-		from typify.inferencing.typeutils import TypeUtils
+		from ...inferencing.typeutils import TypeUtils
 
 		old = concsubs.get(self, None)
 

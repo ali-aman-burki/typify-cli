@@ -72,7 +72,7 @@ class GraphBuilder:
 
 	@staticmethod
 	def initialize_globals():
-		from typify.utils.logging import logger
+		from ..utils.logging import logger
 		logger.debug(f"{logger.emoji_map['init']} [Cache] Initializing globals from libraries")
 		for lib in GlobalContext.libs.values():
 			GlobalContext.meta_map.update(lib.meta_map)
@@ -80,7 +80,7 @@ class GraphBuilder:
 
 	@staticmethod
 	def _dep_cache_file_for(lib) -> Optional[Path]:
-		from typify.utils.caching import GlobalCache
+		from ..utils.caching import GlobalCache
 		lcache = GlobalCache.libs_cache.get(lib.src)
 		if lcache is None:
 			return None
@@ -123,7 +123,7 @@ class GraphBuilder:
 			progress: Optional[ProgressBar] = None, 
 			log_files: bool = False
 		):
-		from typify.utils.logging import logger
+		from ..utils.logging import logger
 		builtins = GlobalContext.inference.get("builtins")
 		total = len(metas)
 		if total:
@@ -144,8 +144,8 @@ class GraphBuilder:
 
 	@staticmethod
 	def build_graph_all(use_cache: bool = True):
-		from typify.utils.caching import GlobalCache
-		from typify.utils.logging import logger
+		from ..utils.caching import GlobalCache
+		from ..utils.logging import logger
 
 		logger.debug(f"{logger.emoji_map['build']} [Cache] Starting dependency graph build")
 

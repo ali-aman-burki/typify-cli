@@ -47,7 +47,7 @@ class ReferenceSet:
 		return next(reversed(self.references))
 	
 	def as_type(self):
-		from typify.inferencing.typeutils import TypeUtils
+		from ..inferencing.typeutils import TypeUtils
 		return TypeUtils.unify(self)
 	
 	def typestring(self):
@@ -55,9 +55,9 @@ class ReferenceSet:
 
 class Instance:
 	def __init__(self, instantiator: ClassDefinition):
-		from typify.inferencing.generics.model import GenericConstruct, Placeholder
-		from typify.inferencing.expression import PackedExpr, TypeExpr
-		from typify.inferencing.commons import ParameterEntry
+		from ..inferencing.generics.model import GenericConstruct, Placeholder
+		from ..inferencing.expression import PackedExpr, TypeExpr
+		from ..inferencing.commons import ParameterEntry
 
 		self.instantiator: ClassDefinition = instantiator
 		self.names: dict[str, Name] = {}
@@ -74,8 +74,8 @@ class Instance:
 		self.genconstruct: dict[ClassDefinition, GenericConstruct] = {}
 	
 	def resolve_fully(self, resolver):
-		from typify.inferencing.commons import Checker, Builtins
-		from typify.inferencing.resolver import Resolver
+		from ..inferencing.commons import Checker, Builtins
+		from ..inferencing.resolver import Resolver
 
 		resolver: Resolver = resolver
 
@@ -92,7 +92,7 @@ class Instance:
 		return self
 
 	def collect_str_objects(self):
-		from typify.inferencing.commons import Checker, Builtins
+		from ..inferencing.commons import Checker, Builtins
 		
 		if self.instanceof(Builtins.get_type("str")):
 			return { self }
@@ -104,7 +104,7 @@ class Instance:
 		return set()
 	
 	def collect_str_holders(self):
-		from typify.inferencing.commons import Checker, Builtins
+		from ..inferencing.commons import Checker, Builtins
 		if Checker.is_alias(self):
 			result = {}
 			for arg in self.packed_expr.args:
@@ -131,7 +131,7 @@ class Instance:
 			attr: str
 		) -> Name:
 		
-		from typify.inferencing.commons import Checker
+		from ..inferencing.commons import Checker
 
 		if attr in self.names: return self.names[attr]
 		
@@ -152,8 +152,8 @@ class Instance:
 			instantiator: ClassDefinition, 
 			typeargs: list = None
 		):
-		from typify.inferencing.generics.utils import GenericUtils
-		from typify.inferencing.expression import TypeExpr
+		from ..inferencing.generics.utils import GenericUtils
+		from ..inferencing.expression import TypeExpr
 		
 		typeargs: list[TypeExpr] = typeargs if typeargs else []
 		self.instantiator = instantiator
@@ -170,8 +170,8 @@ class Instance:
 			)
 
 	def as_type(self):
-		from typify.inferencing.expression import TypeExpr
-		from typify.inferencing.commons import Typing, Checker
+		from ..inferencing.expression import TypeExpr
+		from ..inferencing.commons import Typing, Checker
 
 		base = self.instantiator
 		args = []

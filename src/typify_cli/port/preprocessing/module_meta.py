@@ -13,7 +13,7 @@ class ModuleMeta:
 			trust_annotations: bool,
 			last_modified: Path
 		):
-		from typify.preprocessing.instance_utils import VSlot, FSlot
+		from ..preprocessing.instance_utils import VSlot, FSlot
 		
 		self.src = src
 		self.tree = tree
@@ -36,7 +36,7 @@ class ModuleMeta:
 		self.count_map: dict[tuple[int, int], int] = {}
 
 	def precollect(self, typeslots: bool, infer: bool, topn: int, typemap: dict) -> int:
-		from typify.preprocessing.precollector import PreCollector
+		from ..preprocessing.precollector import PreCollector
 		try:
 			PreCollector(typemap, self, typeslots, infer, topn).visit(self.tree)
 		except (RecursionError, UnicodeError):
@@ -63,7 +63,7 @@ class ModuleMeta:
 		return (hashable_varsots, hashable_funcslots)
 
 	def update_count_map(self, position: tuple[int, int]):
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 		if self.count_map.get(position, 0) > 0:
 			self.count_map[position] -= 1
 			GlobalContext.progress_bar.update()
@@ -105,7 +105,7 @@ class ModuleMeta:
 			self.fslots_snapshots[position] = fslot
 
 	def safe_update_vslot(self, position: tuple[int, int], refset):
-		from typify.preprocessing.instance_utils import ReferenceSet
+		from ..preprocessing.instance_utils import ReferenceSet
 
 		refset: ReferenceSet = refset
 		
@@ -115,7 +115,7 @@ class ModuleMeta:
 		self.vslots_snapshots[position].u_type.update(refset)
 
 	def safe_update_fslot_args(self, position: tuple[int, int], argname: str, refset):
-		from typify.preprocessing.instance_utils import ReferenceSet
+		from ..preprocessing.instance_utils import ReferenceSet
 
 		refset: ReferenceSet = refset
 
@@ -125,7 +125,7 @@ class ModuleMeta:
 		self.fslots_snapshots[position].u_params[argname] = refset
 
 	def safe_update_fslot_return(self, position: tuple[int, int], refset):
-		from typify.preprocessing.instance_utils import ReferenceSet
+		from ..preprocessing.instance_utils import ReferenceSet
 
 		refset: ReferenceSet = refset
 

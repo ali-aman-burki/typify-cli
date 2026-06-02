@@ -42,7 +42,7 @@ class FunctionUtils:
 		fobject: Instance,
 		arguments: dict[str, ArgTuple], 
 	):
-		from typify.inferencing.executor import Executor
+		from ..inferencing.executor import Executor
 		
 		function_table = fobject.origin
 		tree = fobject.tree

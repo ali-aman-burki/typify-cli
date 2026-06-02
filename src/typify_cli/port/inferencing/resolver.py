@@ -118,9 +118,9 @@ class Resolver:
 	#TODO: need support for literal types i.e Literal[...]
 	# @safeguard(lambda: ReferenceSet(), "resolve_value")
 	def resolve_value(self, node: ast.Expr) -> ReferenceSet:
-		from typify.inferencing.call_dispatcher import CallDispatcher
-		from typify.inferencing.typeutils import TypeUtils
-		from typify.inferencing.desugar import Desugar
+		from ..inferencing.call_dispatcher import CallDispatcher
+		from ..inferencing.typeutils import TypeUtils
+		from ..inferencing.desugar import Desugar
 		
 		if isinstance(node, ast.Constant):
 			type_name = type(node.value).__name__
@@ -225,7 +225,7 @@ class Resolver:
 			return Desugar.resolve(node, self)
 	
 	def assign(self, target: ast.expr, value: ast.expr) -> None:
-		from typify.inferencing.desugar import Desugar
+		from ..inferencing.desugar import Desugar
 
 		def _has_starred(t: ast.AST) -> bool:
 			if isinstance(t, (ast.Tuple, ast.List)):
@@ -249,8 +249,8 @@ class Resolver:
 	
 	@safeguard(lambda: None, "process_name_binding")
 	def process_name_binding(self, resolved_target: PackGroup, resolved_value: ReferenceSet):
-		from typify.inferencing.typeutils import TypeUtils
-		from typify.inferencing.expression import TypeExpr
+		from ..inferencing.typeutils import TypeUtils
+		from ..inferencing.expression import TypeExpr
 
 		ListType  = Builtins.get_type("list")
 		TupleType = Builtins.get_type("tuple")

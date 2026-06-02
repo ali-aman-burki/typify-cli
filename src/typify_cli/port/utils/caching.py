@@ -99,7 +99,7 @@ class GlobalCache:
 	):
 		if not GlobalCache.blocked_libs.isdisjoint(libs.keys()): return
 
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 
 		context_id = repr(processed_sequences)
 		last_modified = max(m.last_modified for seq in processed_sequences for m in seq)
@@ -168,7 +168,7 @@ class GlobalCache:
 
 	@staticmethod
 	def load_inference_context(current_path: list[list[ModuleMeta]]) -> list[ModuleMeta]:
-		from typify.preprocessing.core import GlobalContext
+		from ..preprocessing.core import GlobalContext
 
 		context_id = repr(current_path)
 		entry = GlobalCache.context_index.get(context_id)

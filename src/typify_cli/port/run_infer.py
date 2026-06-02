@@ -66,7 +66,7 @@ def run_project(
 	config=None,
 ):
 	
-	from typify.utils.logging import logger, LogLevel
+	from .utils.logging import logger, LogLevel
 	from pathlib import Path
 
 	project_dir = Path(project_dir).resolve()
