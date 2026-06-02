@@ -3,7 +3,7 @@ import json
 import warnings
 
 from pathlib import Path
-from tqdm import tqdm
+from rich.progress import track
 
 class TypeAnnotationExtractor(ast.NodeVisitor):
     def __init__(self, file_path: Path):
@@ -137,13 +137,7 @@ def extract_type_annotations(
                 continue
             rel_paths.append(s.replace("\\", "/"))
 
-        for rel_str in tqdm(
-            rel_paths,
-            total=len(rel_paths),
-            desc="Building Groundtruth",
-            ascii=(" ", "━"),
-            bar_format="{desc}: [{bar:50}] {n_fmt}/{total_fmt}",
-        ):
+        for rel_str in track(rel_paths, description="Building Groundtruth"):
             py_file = (root / rel_str).resolve()
 
             if py_file.is_file() and py_file.suffix == ".py":
@@ -156,12 +150,7 @@ def extract_type_annotations(
 
     repos = [p for p in root.glob("*/*") if p.is_dir()]
 
-    for repo_path in tqdm(
-        repos,
-        desc="Building Groundtruth",
-        ascii=(" ", "━"),
-        bar_format="{desc}: [{bar:50}] {n_fmt}/{total_fmt}",
-    ):
+    for repo_path in track(repos, description="Building Groundtruth"):
         for py_file in repo_path.rglob("*.py"):
             if not py_file.is_file():
                 continue

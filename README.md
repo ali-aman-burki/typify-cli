@@ -227,7 +227,7 @@ This enables experimentation with domain-specific retrieval corpora.
 
 ## Batch Inference and Evaluation
 
-For large-scale analysis across entire datasets, such as benchmarking Typify against a corpus of Python projects, `typify-cli` provides three commands that together form an end-to-end evaluation pipeline: ground-truth extraction, batch inference, and result comparison.
+For large-scale analysis across entire datasets, such as benchmarking Typify against a corpus of Python projects, `typify-cli` provides three commands that together form an end-to-end evaluation pipeline: ground-truth extraction, batch inference, and result comparison. The command-line interface for batch inference is being worked on due to some minor porting issues, so it may be slightly inconsistent in this area.
 
 ### `typify gt` - Ground-Truth Extraction
 

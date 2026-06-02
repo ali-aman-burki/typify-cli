@@ -8,7 +8,7 @@ import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from tqdm import tqdm
+from rich.progress import track
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy import sparse
 
@@ -108,12 +108,7 @@ def build_csv_index(train_list_file: str, output_csv: Path) -> pd.DataFrame:
 
 	all_slots: list[tuple[str, str, str]] = []
 
-	for path in tqdm(
-		all_files,
-		desc="Extracting",
-		ascii=(' ', '━'),
-		bar_format="{desc}: [{bar:50}] {n_fmt}/{total_fmt}"
-	):
+	for path in track(all_files, description="Extracting"):
 		all_slots.extend(extract_typed_slots(path))
 
 	if not all_slots:
@@ -151,12 +146,7 @@ def build_vector_index(df: pd.DataFrame, output_dir: Path, *, max_features=20000
 	)
 
 	print("Training TF-IDF vectorizer...")
-	X = vectorizer.fit_transform(tqdm(
-		corpus,
-		desc="Vectorizing",
-		ascii=(' ', '━'),
-		bar_format="{desc}: [{bar:50}] {percentage:3.0f}%"
-	))
+	X = vectorizer.fit_transform(track(corpus, description="Vectorizing"))
 
 	output_dir.mkdir(parents=True, exist_ok=True)
 	sparse.save_npz(output_dir / "tfidf_matrix.npz", X)

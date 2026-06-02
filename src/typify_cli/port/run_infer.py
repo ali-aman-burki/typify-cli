@@ -3,7 +3,7 @@ import tempfile
 import json
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from tqdm import tqdm
+from rich.progress import Progress, BarColumn, TextColumn, MofNCompleteColumn
 from pathlib import Path
 
 from . import stubs_dir
@@ -418,13 +418,12 @@ def infer_dataset(
 					utime,
 				))
 
-	with tqdm(
-		total=len(repos),
-		desc=f"Inferring types ({workers} workers)",
-		ascii=(' ', '━'),
-		unit="repo",
-		bar_format="{desc}: [{bar:50}] {n_fmt}/{total_fmt}"
-	) as pbar, ProcessPoolExecutor(max_workers=workers) as ex:
+	with Progress(
+		TextColumn("[progress.description]{task.description}"),
+		BarColumn(),
+		MofNCompleteColumn(),
+	) as progress, ProcessPoolExecutor(max_workers=workers) as ex:
+		pbar = progress.add_task(f"Inferring types ({workers} workers)", total=len(repos))
 
 		futures = [ex.submit(_infer_one_repo_task, args) for args in repos]
 
@@ -433,7 +432,7 @@ def infer_dataset(
 			try:
 				res = fut.result()
 			except Exception as e:
-				pbar.update(1)
+				progress.advance(pbar)
 				continue
 
 			if res and res.get("ok"):
@@ -449,7 +448,7 @@ def infer_dataset(
 							outlog.write(f"===== Log for {author}/{Path(repo).name} =====\n")
 							outlog.write(repo_log + "\n\n")
 
-			pbar.update(1)
+			progress.advance(pbar)
 
 	with open(output_types, "w", encoding="utf-8") as f:
 		json.dump(all_types, f, indent="\t")
