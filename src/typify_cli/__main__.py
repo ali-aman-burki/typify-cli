@@ -17,7 +17,7 @@ from .retrieval.build import build_index
 from .retrieval.query import TypeRetriever
 from .retrieval.retrieve_file import retrieve_file
 from .type4py.infer_file import infer_file as type4py_infer_file
-from .merge import run_infer, run_gt, run_eval, stubs_dir
+from .port import run_infer, run_gt, run_eval, stubs_dir
 
 _DEFAULT_CONFIG = {
     "context-retrieval": True,
