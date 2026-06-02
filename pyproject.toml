@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "typify-cli"
-version = "0.2.0"
+version = "0.2.5"
 description = "Backend CLI for the Typify inference engine"
 readme = "README.md"
 license = { file = "LICENSE" }
